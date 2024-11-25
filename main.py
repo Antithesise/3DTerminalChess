@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from bisect import bisect_left
 from functools import lru_cache
 from math import copysign, cos, radians, sin
-from multiprocessing import Pool
+# from multiprocessing import Pool
 from os import get_terminal_size
 from sys import float_info
 from time import sleep
@@ -673,11 +673,11 @@ def handlein(camera: Camera) -> bool:
             case 32: # space
                 camera.pos += [0, 0.2, 0]
             case 113: # q
-                camera.pos += [-0.2, 0, 0.2] @ camera.yrotmat
+                camera.pos += [-0.14, 0, 0.14] @ camera.yrotmat
             case 119: # w
                 camera.pos += [0, 0, 0.2] @ camera.yrotmat
             case 101: # e
-                camera.pos += [0.2, 0, 0.2] @ camera.yrotmat
+                camera.pos += [0.14, 0, 0.14] @ camera.yrotmat
             case 97: # a
                 camera.pos += [-0.2, 0, 0] @ camera.yrotmat
             case 115: # s
@@ -701,7 +701,7 @@ def aproject(obj: AbstractObject, camera: Camera, a, kw):
 
 def render(objs: Collection[tuple[AbstractObject, tuple, dict]], camera: Camera) -> None:
     global screenbuffer
-    screenbuffer = "\x1b[2J"
+    screenbuffer = "\x1b[2J\x1b[H3D Terminal Chess\n\nWASD + QE \tmove\n ← ↑ ↓ →  \trotate\nspace/tab  \tup/down"
 
     # with Pool(5) as p:
     #     proj = p.starmap(aproject, [(o, camera, a, kw) for o, a, kw in objs])
