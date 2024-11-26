@@ -6,7 +6,7 @@ from math import copysign, cos, radians, sin
 from os import get_terminal_size
 from sys import float_info
 from time import sleep
-from typing import Collection, NamedTuple, Optional, Self, overload
+from typing import Collection, NamedTuple, Never, NoReturn, Optional, Self, overload
 from numpy import typing as npt
 import numpy as np
 
@@ -49,8 +49,8 @@ class Vec2(NamedTuple):
 global screenbuffer
 screenbuffer = "\x1b[2J"
 
-
-def gradmap(grad):
+@lru_cache(CACHE_SIZE)
+def gradmap(grad: float):
     chars = {
         -4: "|",
         -2: "\\",
@@ -65,7 +65,7 @@ def gradmap(grad):
         4: "|"
     }
 
-    keys = list(chars.keys())
+    keys = tuple(chars.keys())
 
     pos = bisect_left(keys, grad)
     if pos == 0:
@@ -172,11 +172,11 @@ class AbstractObject(ABC):
         return rotmat(self.rx, self.ry, self.rz)
 
     @abstractmethod
-    def project(self, obj: "AbstractObject") -> tuple[list[Vec2], list[bool]]: ...
+    def project(self, obj: "AbstractObject") -> tuple[tuple[Vec2, ...], tuple[bool, ...]]: ...
 
     @classmethod
     @abstractmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool], *args, **kwargs) -> None: ...
+    def render(cls, proj: tuple[Vec2, ...], zclip: tuple[bool, ...], *args, **kwargs) -> None: ...
 
 
 class Camera(AbstractObject):
@@ -209,7 +209,7 @@ class Camera(AbstractObject):
         self.foclen = foclen
 
     @lru_cache(CACHE_SIZE)
-    def __project(self, rot: tuple[float, float, float], pos: tuple[float, float, float], fl: float) -> tuple[list[Vec2], list[bool]]:
+    def __project(self, rot: tuple[float, float, float], pos: tuple[float, float, float], fl: float) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
         dx, dy, dz = (self.rotmat @ (np.array(pos) + [0, 0, fl]))
 
         if dz == 0: dz = FMIN
@@ -217,15 +217,15 @@ class Camera(AbstractObject):
         bx = dx / abs(dz)
         by = dy / abs(dz)
 
-        return [transform(bx, by)], [dz <= 0]
+        return (transform(bx, by),), (dz <= 0,)
 
-    def project(self, obj: AbstractObject) -> tuple[list[Vec2], list[bool]]:
+    def project(self, obj: AbstractObject) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
         res, clip = self.__project(tuple(self.rot), tuple(obj.pos - self.pos), self.foclen)
 
-        return [Vec2(*v) for v in res], clip # deepcopy to prevent side effects
+        return tuple(Vec2(*v) for v in res), clip # deepcopy to prevent side effects
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool]) -> None:
+    def render(cls, proj: Never, zclip: Never) -> NoReturn:
         raise NotImplementedError("No Escherian shenanigans here please.")
 
 class Point(AbstractObject):
@@ -236,11 +236,11 @@ class Point(AbstractObject):
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
 
-    def project(self, camera: Camera) -> tuple[list[Vec2], list[bool]]:
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
         return camera.project(self)
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool]) -> None:
+    def render(cls, proj: tuple[Vec2], zclip: tuple[bool]) -> None:
         global screenbuffer
 
         for p, c in zip(proj, zclip):
@@ -279,7 +279,7 @@ class Line(AbstractObject):
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
 
-    def project(self, camera: Camera) -> tuple[list[Vec2], list[bool]]:
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
         res = []
         zclip = []
 
@@ -305,7 +305,7 @@ class Line(AbstractObject):
         return res, zclip
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool]) -> None:
+    def render(cls, proj: tuple[Vec2, Vec2], zclip: tuple[bool, bool], char: str="") -> None:
         """
         Good old Bresenham
         """
@@ -329,7 +329,7 @@ class Line(AbstractObject):
         sx = int(copysign(1, dx))
         sy = int(copysign(1, dy))
 
-        char = gradmap(-dy / (dx or FMIN))
+        char = char or gradmap(-dy / (dx or FMIN))
 
         if dx == 0:
             x = p1.x
@@ -337,7 +337,7 @@ class Line(AbstractObject):
             dy = min(max(p1.y, p2.y), VH) + 1 - y
 
             for y in range(y, y + int(dy)):
-                screenbuffer += "\x1b[%d;%dH|" % (y, x)
+                screenbuffer += "\x1b[%d;%dH%s" % (y, x, char)
 
             return
 
@@ -348,7 +348,7 @@ class Line(AbstractObject):
 
             # s = "\x1b[%d;" % y
             # screenbuffer += s + s.join("%dH-" % (x + i) for i in range(int(dx)))
-            screenbuffer += "\x1b[%d;%dH%s" % (y, x, "-" * int(dx))
+            screenbuffer += "\x1b[%d;%dH%s" % (y, x, char * int(dx))
 
             return
 
@@ -423,7 +423,7 @@ class Triangle(AbstractObject):
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
 
-    def project(self, camera: Camera) -> tuple[list[Vec2], list[bool]]:
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
         res = []
         zclip = []
 
@@ -457,7 +457,7 @@ class Triangle(AbstractObject):
         return res, zclip
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool]) -> None:
+    def render(cls, proj: tuple[Vec2, ...], zclip: tuple[bool, ...], char: str="") -> None:
         """
         Half space rasterisation algorithm based on Nicolas Capens'
         https://web.archive.org/web/20050408192410/http://sw-shader.sourceforge.net/rasterizer.html
@@ -468,11 +468,20 @@ class Triangle(AbstractObject):
         if all(zclip):
             return
 
-        (x1, y1), (x2, y2), (x3, y3) = [p for p in proj[:4]]
+        (x1, y1), (x2, y2), (x3, y3) = proj[:3]
 
+        # viewport culling
         if  (x1 < 1 and x2 < 1 and x3 < 1) or (x1 > VW and x2 > VW and x3 > VW) or\
             (y1 < 1 and y2 < 1 and y3 < 1) or (y1 > VH and y2 > VH and y3 > VH):
                 return
+
+        # backface culling
+        if x2*y1 + x3*y2 + x1*y3 < x1*y2 + x2*y3 + x3*y1:
+            # return
+
+            (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse chirality
+
+        char = char or "#"
 
         dx12 = x1 - x2
         dx23 = x2 - x3
@@ -506,8 +515,8 @@ class Triangle(AbstractObject):
 
             for x in range(minx, maxx):
                 if 0 < x < VW and 0 < y < VH:
-                    if cx1 > 0 and cx2 > 0 and cx3 > 0:
-                        screenbuffer += "\x1b[%d;%dH#" % (y, x)
+                    if cx1 >= 0 and cx2 >= 0 and cx3 >= 0:
+                        screenbuffer += "\x1b[%d;%dH%s" % (y, x, char)
 
                 cx1 -= dy12
                 cx2 -= dy23
@@ -518,26 +527,26 @@ class Triangle(AbstractObject):
             cy3 += dx31
 
 class Mesh(AbstractObject):
-    points: list[Point]
-    chains: set[tuple[int]]
+    points: tuple[Point, ...]
+    lines: set[tuple[int, ...]]
     worldloc: bool
 
     def __init__(self,
-                 points: list[Point],
-                 chains: set[tuple[int]],
+                 points: tuple[Point, ...],
+                 chains: set[tuple[int, ...]],
                  pos: Vec3=(0,0,0),
                  rot: Vec3=(0,0,0),
                  worldloc: bool=True) -> None:
 
         self.points = points
-        self.chains = chains
+        self.lines = chains
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
         self.worldloc = worldloc
 
-    def project(self, camera: Camera) -> tuple[list[Vec2], list[bool]]:
-        res = []
-        clip = []
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[bool, ...]]:
+        res = ()
+        clip = ()
 
         if self.worldloc:
             for p in self.points:
@@ -558,40 +567,162 @@ class Mesh(AbstractObject):
         return res, clip
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool], chains: Optional[set[tuple[int]]]=None) -> None:
-        if chains is None:
+    def render(cls, proj: tuple[Vec2, ...], zclip: tuple[bool, ...], lines: Optional[set[tuple[int, ...]]]=None) -> None:
+        if lines is None:
             for i in range(len(proj)):
                 for j in range(i):
                     Line.render(
-                        [proj[i], proj[j]],
-                        [zclip[i], zclip[j]]
+                        (proj[i], proj[j]),
+                        (zclip[i], zclip[j])
                     )
         else:
-            for p in chains:
+            for p in lines:
                 for i in range(len(p) - 1):
                     Line.render(
-                        [proj[p[i]], proj[p[i+1]]],
-                        [zclip[p[i]], zclip[p[i+1]]]
+                        (proj[p[i]], proj[p[i+1]]),
+                        (zclip[p[i]], zclip[p[i+1]])
                     )
 
-class King(Mesh):
+class Piece(Mesh):
+    points: tuple[Point, ...]
+    triangles: set[tuple[int, int, int]]
+    lines: set[tuple[int, int]]
+    worldloc = False
+
     def __init__(self,
                  pos: Vec3=(0,0,0),
-                 rot: Vec3=(0,0,0),
-                 worldloc: bool=False) -> None:
+                 rot: Vec3=(0,0,0)) -> None:
 
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
-        self.worldloc = worldloc
 
     @classmethod
-    def render(cls, proj: list[Vec2], zclip: list[bool], chains: Optional[set[tuple[int]]]=None) -> None:
-        for p in cls.chains:
-            for i in range(len(p) - 1):
-                Line.render(
-                    [proj[p[i]], proj[p[i+1]]],
-                    [zclip[p[i]], zclip[p[i+1]]]
-                )
+    def render(cls, proj: tuple[Vec2, ...], zclip: tuple[bool, ...], char: str="") -> None:
+        for i, j, k in cls.triangles:
+            Triangle.render(
+                (proj[i], proj[j], proj[k]),
+                (zclip[i], zclip[j], zclip[k]),
+                char
+            )
+
+        for i, j in cls.lines:
+            Line.render(
+                (proj[i], proj[j]),
+                (zclip[i], zclip[j]),
+                char
+            )
+
+    @classmethod
+    @abstractmethod
+    def gen_mesh(cls) -> None: ...
+
+class King(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        divs = 8 # 4 times a factor of 90
+        offset = 17 * divs
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // divs))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.4),      # 0 * 8
+            (-0.9, 0.4),    # 1 * 8
+            (-0.8, 0.4),    # 2 * 8
+            (-0.7, 0.3),    # 3 * 8
+            (-0.6, 0.3),    # 4 * 8
+            (-0.5, 0.2),    # 5 * 8
+            (-0.4, 0.15),   # 6 * 8
+            (-0.3, 0.125),  # 7 * 8
+            (-0.2, 0.1125), # 8 * 8
+            (-0.1, 0.1),    # 9 * 8
+            (0, 0.1),       # 10 * 8
+            (0.1, 0.1),     # 11 * 8
+            (0.2, 0.2),     # 12 * 8
+            (0.3, 0.1),     # 13 * 8
+            (0.4, 0.1333),  # 14 * 8
+            (0.5, 0.1666),  # 15 * 8
+            (0.6, 0.2),     # 16 * 8
+        ]:
+            points += [(m * sintab[i], y, m * sintab[i - (divs>>2)]) for i in range(divs)]
+
+        points += [
+            (0, -1, 0),     # 136
+            (0, 0.6, 0),    # 137
+            (0, 0.8, 0),    # 138
+            (-0.1, 0.7, 0), # 139
+            (0.1, 0.7, 0)   # 140
+        ]
+
+        triangles.update({
+            ((i + 1) % divs, i, offset) for i in range(divs)
+        })
+
+        for j in range(0, offset, divs):
+            triangles.update({
+                (j + i, j + (i + 1) % divs, j + divs + 1) for i in range(divs)
+            })
+
+        lines = {
+            (offset + 1, offset + 2),
+            (offset + 3, offset + 4)
+        }
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
+
+class Queen(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        divs = 8 # 4 times a factor of 90
+        offset = 17 * divs
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // divs))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.4),      # 0 * 8
+            (-0.9, 0.4),    # 1 * 8
+            (-0.8, 0.4),    # 2 * 8
+            (-0.7, 0.3),    # 3 * 8
+            (-0.6, 0.3),    # 4 * 8
+            (-0.5, 0.2),    # 5 * 8
+            (-0.4, 0.15),   # 6 * 8
+            (-0.3, 0.125),  # 7 * 8
+            (-0.2, 0.1125), # 8 * 8
+            (-0.1, 0.1),    # 9 * 8
+            (0, 0.1),       # 10 * 8
+            (0.1, 0.1),     # 11 * 8
+            (0.2, 0.2),     # 12 * 8
+            (0.3, 0.1),     # 13 * 8
+            (0.4, 0.1333),  # 14 * 8
+            (0.5, 0.1666),  # 15 * 8
+            (0.6, 0.2),     # 16 * 8
+        ]:
+            points += [(m * sintab[i], y, m * sintab[i - (divs>>2)]) for i in range(divs)]
+
+        points += [
+            (0, -1, 0),     # 136
+            (0, 0.6, 0),    # 137
+        ]
+
+        triangles.update({
+            ((i + 1) % divs + j, i + j, offset) for i in range(divs) for j in (0, 17)
+        })
+
+        for j in range(0, offset, divs):
+            triangles.update({
+                (j + i, j + (i + 1) % divs, j + divs + 1) for i in range(divs)
+            })
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
 
 
 def handlein(camera: Camera) -> bool:
@@ -735,32 +866,47 @@ def render(objs: Collection[tuple[AbstractObject, tuple, dict]], camera: Camera)
     print(end=screenbuffer, flush=True)
 
 def main() -> None:
-    camera = Camera((0, 6, -7), (40, 0, 0))
+    King.gen_mesh()
+    Queen.gen_mesh()
 
-    # points = [Point((x, y, z)) for x in (-1,1) for y in (-1,1) for z in (-1,1)]
-    # chains = {(0,4),(1,5,4,6),(5,7,6,2,3),(7,3,1,0,2)}
-    # cube = Mesh(points, chains)
+    camera = Camera((0, 6, -7), (40, 0, 0))
 
     xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), (), {}) for x in range(-4, 5)]
     zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), (), {}) for z in range(-4, 5)]
 
     checkerboard = []
-    points = [Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8]
+    cbpoints = [Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8]
 
     for i in range(0, 70, 2):
-        p1 = points[i]
-        p2 = points[i + 10]
-        p3 = points[i + 9]
-        p4 = points[i + 1]
+        if i % 18 >= 16:
+            continue
+
+        p1 = cbpoints[i]
+        p2 = cbpoints[i + 10]
+        p3 = cbpoints[i + 9]
+        p4 = cbpoints[i + 1]
 
         checkerboard.append((Triangle(p3, p1, p2), (), {}))
         checkerboard.append((Triangle(p1, p4, p2), (), {}))
+
+    # points = [Point((x, y, z)) for x in (-1,1) for y in (-1,1) for z in (-1,1)]
+    # lines = {(0,4),(1,5,4,6),(5,7,6,2,3),(7,3,1,0,2)}
+    # cube = Mesh(points, lines)
+
+    WKing = King((0.5, 0, -3.5))
+    WQueen = Queen((-0.5, 0, -3.5))
+
+    BKing = King((0.5, 0, 3.5))
+    BQueen = Queen((-0.5, 0, 3.5))
 
     objects = [
         *checkerboard,
         *xgrid,
         *zgrid,
-        # (cube, (cube.chains,), {}),
+        (WKing, ("K",), {}),
+        (WQueen, ("Q",), {}),
+        (BKing, ("k",), {}),
+        (BQueen, ("q",), {}),
     ]
 
     redraw = True
