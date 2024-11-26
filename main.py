@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from bisect import bisect_left
 from functools import lru_cache
-from math import copysign, cos, radians, sin
+from math import ceil, copysign, cos, floor, radians, sin
 # from multiprocessing import Pool
 from os import get_terminal_size
+from random import randint
 from sys import float_info
 from time import sleep
 from typing import Collection, NamedTuple, Never, NoReturn, Optional, Self, overload
@@ -514,6 +515,8 @@ class Triangle(AbstractObject):
 
             # (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse chirality
 
+        # screenbuffer += "\x1b[38;5;%dm" % randint(0, 255)
+
         char = char or "#"
         c = sum(z) / 3
 
@@ -525,10 +528,10 @@ class Triangle(AbstractObject):
         dy23 = y2 - y3
         dy31 = y3 - y1
 
-        minx = round(min(x1, x2, x3, VW))
-        maxx = round(max(x1, x2, x3, 0))
-        miny = round(min(y1, y2, y3, VH))
-        maxy = round(max(y1, y2, y3, 0))
+        minx = floor(min(x1, x2, x3, VW))
+        maxx = ceil(max(x1, x2, x3, 0))
+        miny = floor(min(y1, y2, y3, VH))
+        maxy = ceil(max(y1, y2, y3, 0))
 
         c1 = dy12 * x1 - dx12 * y1
         c2 = dy23 * x2 - dx23 * y2
@@ -565,6 +568,8 @@ class Triangle(AbstractObject):
             cy1 += dx12
             cy2 += dx23
             cy3 += dx31
+
+        # screenbuffer += "\x1b[0m"
 
 class Mesh(AbstractObject):
     points: tuple[Point, ...]
@@ -698,10 +703,19 @@ class King(Piece):
             ((i + 1) % divs, i, offset) for i in range(divs)
         })
 
-        for j in range(0, offset, divs):
+        for j in range(0, offset - divs, divs):
             triangles.update({
-                (j + i, j + (i + 1) % divs, j + divs + 1) for i in range(divs)
+                (j + i, j + (i + 1) % divs, j + divs + i) for i in range(divs)
             })
+
+        for j in range(0, offset - divs, divs):
+            triangles.update({
+                (j + (i + 1) % divs, j + divs + (i + 1) % divs, j + divs + i) for i in range(divs)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % divs, offset - 1 - i, offset + 1) for i in range(divs)
+        })
 
         lines = {
             (offset + 1, offset + 2),
@@ -748,13 +762,22 @@ class Queen(Piece):
         ]
 
         triangles.update({
-            ((i + 1) % divs + j, i + j, offset) for i in range(divs) for j in (0, 17)
+            ((i + 1) % divs, i, offset) for i in range(divs)
         })
 
-        for j in range(0, offset, divs):
+        for j in range(0, offset - divs, divs):
             triangles.update({
-                (j + i, j + (i + 1) % divs, j + divs + 1) for i in range(divs)
+                (j + i, j + (i + 1) % divs, j + divs + i) for i in range(divs)
             })
+
+        for j in range(0, offset - divs, divs):
+            triangles.update({
+                (j + (i + 1) % divs, j + divs + (i + 1) % divs, j + divs + i) for i in range(divs)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % divs, offset - 1 - i, offset + 1) for i in range(divs)
+        })
 
         cls.points = tuple(Point(p) for p in points)
         cls.triangles = triangles
