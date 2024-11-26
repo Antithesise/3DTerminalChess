@@ -477,9 +477,9 @@ class Triangle(AbstractObject):
 
         # backface culling
         if x2*y1 + x3*y2 + x1*y3 < x1*y2 + x2*y3 + x3*y1:
-            # return
+            return
 
-            (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse chirality
+            # (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse chirality
 
         char = char or "#"
 
@@ -886,8 +886,8 @@ def main() -> None:
         p3 = cbpoints[i + 9]
         p4 = cbpoints[i + 1]
 
-        checkerboard.append((Triangle(p3, p1, p2), (), {}))
-        checkerboard.append((Triangle(p1, p4, p2), (), {}))
+        checkerboard.append((Triangle(p3, p1, p2), (":",), {}))
+        checkerboard.append((Triangle(p1, p4, p2), (":",), {}))
 
     # points = [Point((x, y, z)) for x in (-1,1) for y in (-1,1) for z in (-1,1)]
     # lines = {(0,4),(1,5,4,6),(5,7,6,2,3),(7,3,1,0,2)}
@@ -903,10 +903,10 @@ def main() -> None:
         *checkerboard,
         *xgrid,
         *zgrid,
-        (WKing, ("K",), {}),
-        (WQueen, ("Q",), {}),
-        (BKing, ("k",), {}),
-        (BQueen, ("q",), {}),
+        (WKing, ("#",), {}),
+        (WQueen, ("#",), {}),
+        (BKing, (".",), {}),
+        (BQueen, (".",), {}),
     ]
 
     redraw = True
