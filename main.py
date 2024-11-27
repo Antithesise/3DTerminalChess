@@ -1,6 +1,6 @@
 from time import sleep
 
-from input import getch, kbhit
+from input import getch, isansitty, kbhit
 from graphics import *
 
 
@@ -13,13 +13,13 @@ def handlein(camera: Camera) -> bool:
 
         match key:
             case 72: # up
-                camera.rot += [-10, 0, 0]
+                camera.rot += [-5, 0, 0]
             case 75: # left
-                camera.rot += [0, -10, 0]
+                camera.rot += [0, -5, 0]
             case 77: # right
-                camera.rot += [0, 10, 0]
+                camera.rot += [0, 5, 0]
             case 80: # down
-                camera.rot += [10, 0, 0]
+                camera.rot += [5, 0, 0]
 
             case 83: # delete
                 pass
@@ -104,13 +104,16 @@ def handlein(camera: Camera) -> bool:
     return redraw
 
 def main() -> None:
-    King.gen_mesh()
-    Queen.gen_mesh()
-
     camera = Camera((0, 6, -7), (40, 0, 0))
 
-    # xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), {"overdraw": True}) for x in range(-4, 5)]
-    # zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), {"overdraw": True}) for z in range(-4, 5)]
+    # xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), {"overdraw": True}) for x in range(-3, 4)]
+    # zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), {"overdraw": True}) for z in range(-3, 4)]
+    border = [
+        (Line(Point((-4, -1, -4)), Point((-4, -1, 4))), {"overdraw": True}),
+        (Line(Point((4, -1, -4)), Point((4, -1, 4))), {"overdraw": True}),
+        (Line(Point((-4, -1, -4)), Point((4, -1, -4))), {"overdraw": True}),
+        (Line(Point((-4, -1, 4)), Point((4, -1, 4))), {"overdraw": True})
+    ]
 
     checkerboard = []
     cbpoints = [Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8]
@@ -133,18 +136,23 @@ def main() -> None:
 
     WKing = King((0.5, 0, -3.5))
     WQueen = Queen((-0.5, 0, -3.5))
+    WPawns = [(Pawn((x - 3.5, 0, -2.5)), {"char": "#"}) for x in range(8)]
 
     BKing = King((0.5, 0, 3.5))
     BQueen = Queen((-0.5, 0, 3.5))
+    BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": "'"}) for x in range(8)]
 
     objects = [
         *checkerboard,
         # *xgrid,
         # *zgrid,
+        *border,
         (WKing, {"char": "#"}),
         (WQueen, {"char": "#"}),
+        *WPawns,
         (BKing, {"char": "'"}),
         (BQueen, {"char": "'"}),
+        *BPawns,
     ]
 
     redraw = True
@@ -153,6 +161,8 @@ def main() -> None:
         if redraw:
             render(objects, camera)
 
+            print(end="\x1b[%d;%dH\x1b[31m+\x1b[0m" % (VH/2, VW/2), flush=True)
+
         while not kbhit():
             sleep(0.01)
 
@@ -160,6 +170,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if not isansitty():
+        exit("This system doesn't fully support ANSI escape codes.")
+
     try:
         print(end="\x1b7\x1b[?1049h\x1b[?25l")
 

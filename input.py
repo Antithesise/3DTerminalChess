@@ -50,7 +50,6 @@ def isansitty() -> bool:
 
 
 if __name__ == "__main__":
-
     while True:
         c = getch()
         print(f"{c}: {ord(c)}")

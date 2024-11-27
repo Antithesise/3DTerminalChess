@@ -6,7 +6,7 @@ from math import ceil, copysign, cos, floor, radians, sin, sqrt
 from os import get_terminal_size
 # from random import randint
 from sys import float_info
-from typing import Collection, NamedTuple, Never, NoReturn, Self, overload
+from typing import Any, Collection, NamedTuple, Never, NoReturn, Self, TypeVar, overload
 from numpy import typing as npt
 import numpy as np
 
@@ -22,26 +22,26 @@ FMIN = (5e-324 or float_info.min) # smallest floating point value
 
 Vec3 = tuple[float, float, float] | npt.ArrayLike
 
-class Vec2(NamedTuple):
-    x: float
-    y: float
+class Vec2[T: (float, int)](NamedTuple):
+    x: T
+    y: T
 
-    def __add__(self, o: "Vec2 | tuple[float, float]") -> "Vec2":
+    def __add__(self, o: "Vec2[T] | tuple[T, T]") -> "Vec2[T]":
         return Vec2(self.x + o[0], self.y + o[1])
 
-    def __sub__(self, o: "Vec2 | tuple[float, float]") -> "Vec2":
+    def __sub__(self, o: "Vec2[T] | tuple[T, T]") -> "Vec2[T]":
         return Vec2(self.x - o[0], self.y - o[1])
 
-    def __mul__(self, s: float) -> "Vec2":
+    def __mul__(self, s: T) -> "Vec2[T]":
         return Vec2(self.x * s, self.y * s)
 
-    def __div__(self, s: float) -> "Vec2":
+    def __div__(self, s: T) -> "Vec2[T]":
         return Vec2(self.x / s, self.y / s)
 
-    def __round__(self) -> "Vec2":
+    def __round__(self) -> "Vec2[int]":
         return Vec2(round(self.x), round(self.y))
 
-    def __eq__(self, o: "Vec2 | tuple[float, float]") -> bool:
+    def __eq__(self, o: "Vec2[T] | tuple[T, T]") -> bool:
         return self.x == o[0] and self.y == o[1]
 
 
@@ -262,9 +262,9 @@ class Point(AbstractObject):
                 continue
 
             if 0 < p.x < VW and 0 < p.y < VH and not c:
-                if zbuffer.setdefault(round(p.y-1) * VW + round(p.x-1), c) >= c:
+                if zbuffer.setdefault(i := round(p.y-1) * VW + round(p.x-1), c) >= c:
                     screenbuffer += "\x1b[%d;%dH%c" % (p.y, p.x, char)
-                    zbuffer[round(p.y-1) * VW + round(p.x-1)] = c
+                    zbuffer[i] = c
 
 class Line(AbstractObject):
     p1: Point
@@ -363,9 +363,9 @@ class Line(AbstractObject):
             dy = round(min(max(p1.y, p2.y), VH) + 1 - y)
 
             for y in range(y, y + dy):
-                if overdraw or zbuffer.setdefault((y-1) * VW + x - 1, c) >= c:
+                if zbuffer.setdefault(i := (y-1) * VW + x - 1, c) >= c or overdraw:
                     screenbuffer += "\x1b[%d;%dH%c" % (y, x, char)
-                    zbuffer[round(y-1) * VW + round(x-1)] = c
+                    zbuffer[i] = c
 
             return
 
@@ -374,22 +374,22 @@ class Line(AbstractObject):
             dx = round(min(max(p1.x, p2.x), VW)) + 1 - x
             y = round(p1.y)
 
-            for i in range(x, x + dx):
-                if overdraw or zbuffer.setdefault((y-1) * VW + x - 1, c) >= c:
+            for x in range(x, x + dx):
+                if zbuffer.setdefault(i := (y-1) * VW + x - 1, c) >= c or overdraw:
                     screenbuffer += "\x1b[%d;%dH%c" % (y, x, char)
-                    zbuffer[round(y-1) * VW + round(x-1)] = c
+                    zbuffer[i] = c
 
         else:
             dx = abs(dx)
             dy = -abs(dy)
             error = dx + dy
 
-            x, y = p1
+            x, y = round(p1)
 
             if 0 < x < VW and 0 < y < VH:
-                if overdraw or zbuffer.setdefault(round(y-1) * VW + round(x-1), c) >= c:
+                if zbuffer.setdefault((i := (y-1) * VW + x - 1), c) >= c or overdraw:
                     screenbuffer += "\x1b[%d;%dH%c" % (y, x, char)
-                    zbuffer[round(y-1) * VW + round(x-1)] = c
+                    zbuffer[i] = c
 
             if sx > 0:
                 x2 = min(VW, p2.x)
@@ -417,9 +417,9 @@ class Line(AbstractObject):
                     break
 
                 if 0 < x < VW and 0 < y < VH:
-                    if overdraw or zbuffer.setdefault(round(y-1) * VW + round(x-1), c) >= c:
+                    if zbuffer.setdefault(i := (y-1) * VW + x - 1, c) >= c or overdraw:
                         screenbuffer += "\x1b[%d;%dH%c" % (y, x, char)
-                        zbuffer[round(y-1) * VW + round(x-1)] = c
+                        zbuffer[i] = c
 
 
 class Triangle(AbstractObject):
@@ -559,9 +559,9 @@ class Triangle(AbstractObject):
             for x in range(minx, maxx):
                 if 0 < x < VW and 0 < y < VH:
                     if cx1 >= 0 and cx2 >= 0 and cx3 >= 0:
-                        if zbuffer.setdefault((y-1) * VW + (x - 1), c) >= c:
+                        if zbuffer.setdefault(i := (y-1) * VW + x - 1, c) >= c:
                             screenbuffer += "\x1b[%d;%dH%c" % (y, x, char)
-                            zbuffer[(y-1) * VW + x - 1] = c
+                            zbuffer[i] = c
 
                 cx1 -= dy12
                 cx2 -= dy23
@@ -632,20 +632,23 @@ class Mesh(AbstractObject):
                shading: tuple[float, ...],
                *,
                triangles: set[tuple[int, int, int]],
-               lines: set[tuple[int, ...]]) -> None:
+               lines: set[tuple[int, ...]],
+               char: str="") -> None:
 
         for i, (j, k, l) in enumerate(triangles):
             Triangle.render(
                 (proj[j], proj[k], proj[l]),
                 (z[j], z[k], z[l]),
-                shading[i]
+                shading[i],
+                char=char
             )
 
         for p in lines:
             for i in range(len(p) - 1):
                 Line.render(
                     (proj[p[i]], proj[p[i+1]]),
-                    (z[p[i]], z[p[i+1]])
+                    (z[p[i]], z[p[i+1]]),
+                    char=char
                 )
 
 class Piece(Mesh):
@@ -690,7 +693,7 @@ class Piece(Mesh):
 class King(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        offset = 12 * MESH_DIVS
+        offset = 11 * MESH_DIVS
 
         sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
@@ -705,11 +708,10 @@ class King(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (-0.1, 0.1),    # 7 * MESH_DIVS
-            (0.1, 0.1),     # 8 * MESH_DIVS
-            (0.2, 0.2),     # 9 * MESH_DIVS
-            (0.3, 0.1),     # 10 * MESH_DIVS
-            (0.6, 0.2),     # 11 * MESH_DIVS
+            (0.1, 0.1),     # 7 * MESH_DIVS
+            (0.2, 0.2),     # 8 * MESH_DIVS
+            (0.3, 0.1),     # 9 * MESH_DIVS
+            (0.6, 0.2),     # 10 * MESH_DIVS
         ]:
             points += [(
                 m * sintab[i],
@@ -761,7 +763,7 @@ class King(Piece):
 class Queen(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        offset = 12 * MESH_DIVS
+        offset = 11 * MESH_DIVS
 
         sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
@@ -776,11 +778,10 @@ class Queen(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (-0.1, 0.1),    # 7 * MESH_DIVS
-            (0.1, 0.1),     # 8 * MESH_DIVS
-            (0.2, 0.2),     # 9 * MESH_DIVS
-            (0.3, 0.1),     # 10 * MESH_DIVS
-            (0.6, 0.2),     # 11 * MESH_DIVS
+            (0.1, 0.1),     # 7 * MESH_DIVS
+            (0.2, 0.2),     # 8 * MESH_DIVS
+            (0.3, 0.1),     # 9 * MESH_DIVS
+            (0.6, 0.2),     # 10 * MESH_DIVS
         ]:
             points += [(
                 m * sintab[i],
@@ -791,6 +792,68 @@ class Queen(Piece):
         points += [
             (0, -1, 0),     # offset
             (0, 0.6, 0),    # offset + 1
+        ]
+
+        triangles.update({
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
+        })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
+        })
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
+
+class Pawn(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        offset = 11 * MESH_DIVS
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.35),     # 0 * MESH_DIVS
+            (-0.87, 0.32),   # 1 * MESH_DIVS
+            (-0.8, 0.22),   # 2 * MESH_DIVS
+            (-0.67, 0.13),  # 3 * MESH_DIVS
+            (-0.37, 0.1),    # 4 * MESH_DIVS
+            (-0.32, 0.2),   # 5 * MESH_DIVS
+            (-0.27, 0.1),    # 6 * MESH_DIVS
+            (-0.2, 0.17),   # 7 * MESH_DIVS
+            (-0.1, 0.2),    # 8 * MESH_DIVS
+            (0, 0.17),      # 9 * MESH_DIVS
+            (0.07, 0.1),      # 10 * MESH_DIVS
+        ]:
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
+
+        points += [
+            (0, -1, 0),     # offset
+            (0, 0.1, 0),    # offset + 1
         ]
 
         triangles.update({
@@ -864,3 +927,8 @@ def render(objs: Collection[tuple[AbstractObject, dict]], camera: Camera) -> Non
     screenbuffer += "\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
 
     print(end=screenbuffer, flush=True)
+
+
+King.gen_mesh()
+Queen.gen_mesh()
+Pawn.gen_mesh()
