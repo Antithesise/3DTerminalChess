@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from bisect import bisect_left
 from functools import lru_cache
-from math import ceil, copysign, cos, floor, radians, sin
+from math import acos, ceil, copysign, cos, floor, pi, radians, sin, sqrt
 # from multiprocessing import Pool
 from os import get_terminal_size
 from random import randint
@@ -15,6 +15,7 @@ from input import getch, kbhit
 
 
 CACHE_SIZE = 1024
+MESH_DIVS = 8 # 4 times a factor of 90
 
 VW, VH = get_terminal_size()
 SCALE = 200
@@ -82,19 +83,33 @@ def gradmap(grad: float):
         return chars[before]
 
 @lru_cache(CACHE_SIZE)
+def normal(p1: tuple[float, float, float],
+           p2: tuple[float, float, float],
+           p3: tuple[float, float, float]) -> npt.NDArray:
+    p = np.array(p1, np.float64)
+    N = np.cross(p2 - p, p3 - p)
+
+    return N / np.sqrt((N ** 2).sum())
+
+@lru_cache(CACHE_SIZE)
 def rotmat(rx: float, ry: float, rz: float) -> npt.NDArray:
-    rx, ry, rz = radians(rx), radians(ry), radians(rz)
+    r = radians(rx), radians(ry), radians(rz)
+    sx, sy, sz = map(sin, r)
+    cx, cy, cz = map(cos, r)
 
     return np.array([
-        [ 1,       0,       0      ],
-        [ 0,       cos(rx), sin(rx)],
-        [ 0,      -sin(rx), cos(rx)]]) @ np.array([
-        [ cos(ry), 0,      -sin(ry)],
-        [ 0,       1,       0      ],
-        [ sin(ry), 0,       cos(ry)]]) @ np.array([
-        [ cos(rz), sin(rz), 0      ],
-        [-sin(rz), cos(rz), 0      ],
-        [ 0,       0,       1      ]])
+        [ 1,  0,  0 ],
+        [ 0,  cx, sx],
+        [ 0, -sx, cx]
+    ]) @ np.array([
+        [ cy, 0, -sy],
+        [ 0,  1, 0  ],
+        [ sy, 0,  cy]
+    ]) @ np.array([
+        [ cz, sz, 0 ],
+        [-sz, cz, 0 ],
+        [ 0,  0,  1 ]
+    ])
 
 @lru_cache(CACHE_SIZE)
 def transform(x: float, y: float) -> Vec2:
@@ -317,7 +332,12 @@ class Line(AbstractObject):
         return res, z
 
     @classmethod
-    def render(cls, proj: tuple[Vec2, Vec2], z: tuple[float, float], char: str="", overdraw: bool=False) -> None:
+    def render(cls,
+               proj: tuple[Vec2, Vec2],
+               z: tuple[float, float],
+               *,
+               char: str="",
+               overdraw: bool=False) -> None:
         """
         Good old Bresenham
         """
@@ -491,7 +511,12 @@ class Triangle(AbstractObject):
         return res, z
 
     @classmethod
-    def render(cls, proj: tuple[Vec2, Vec2, Vec2], z: tuple[float, float, float], char: str="") -> None:
+    def render(cls,
+               proj: tuple[Vec2, Vec2, Vec2],
+               z: tuple[float, float, float],
+               shading: float=-1,
+               *,
+               char: str="") -> None:
         """
         Half space rasterisation algorithm based on Nicolas Capens'
         https://web.archive.org/web/20050408192410/http://sw-shader.sourceforge.net/rasterizer.html
@@ -513,9 +538,12 @@ class Triangle(AbstractObject):
         if x2*y1 + x3*y2 + x1*y3 < x1*y2 + x2*y3 + x3*y1:
             return
 
-            # (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse chirality
+            # (x2, y2), (x1, y1), (x3, y3) = proj[:3] # reverse winding
 
         # screenbuffer += "\x1b[38;5;%dm" % randint(0, 255)
+
+        if shading >= 0:
+            screenbuffer += "\x1b[38;5;%dm" % round(255 - 23 * sqrt(shading**3))
 
         char = char or "#"
         c = sum(z) / 3
@@ -569,29 +597,34 @@ class Triangle(AbstractObject):
             cy2 += dx23
             cy3 += dx31
 
-        # screenbuffer += "\x1b[0m"
+        if shading >= 0:
+            screenbuffer += "\x1b[0m"
 
 class Mesh(AbstractObject):
     points: tuple[Point, ...]
+    triangles: set[tuple[int, int, int]]
     lines: set[tuple[int, ...]]
     worldloc: bool
 
     def __init__(self,
                  points: tuple[Point, ...],
-                 chains: set[tuple[int, ...]],
+                 triangles: set[tuple[int, int, int]],
+                 lines: set[tuple[int, ...]],
                  pos: Vec3=(0,0,0),
                  rot: Vec3=(0,0,0),
                  worldloc: bool=True) -> None:
 
         self.points = points
-        self.lines = chains
+        self.triangles = triangles
+        self.lines = lines
         self.pos = np.array(pos, np.float64)
         self.rot = np.array(rot, np.float64)
         self.worldloc = worldloc
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...]]:
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...], tuple[float, ...]]:
         res = ()
         clip = ()
+        shading = ()
 
         if self.worldloc:
             for p in self.points:
@@ -609,24 +642,37 @@ class Mesh(AbstractObject):
                 res += r
                 clip += c
 
-        return res, clip
+        for i, j, k in self.triangles:
+            shading += 0.5 + np.dot(normal(
+                tuple(self.points[i].pos),
+                tuple(self.points[j].pos),
+                tuple(self.points[k].pos)
+            ), (sqrt(0.5), sqrt(0.5), 0)) / 2,
+
+        return res, clip, shading
 
     @classmethod
-    def render(cls, proj: tuple[Vec2, ...], z: tuple[float, ...], lines: Optional[set[tuple[int, ...]]]=None) -> None:
-        if lines is None:
-            for i in range(len(proj)):
-                for j in range(i):
-                    Line.render(
-                        (proj[i], proj[j]),
-                        (z[i], z[j])
-                    )
-        else:
-            for p in lines:
-                for i in range(len(p) - 1):
-                    Line.render(
-                        (proj[p[i]], proj[p[i+1]]),
-                        (z[p[i]], z[p[i+1]])
-                    )
+    def render(cls,
+               proj: tuple[Vec2, ...],
+               z: tuple[float, ...],
+               shading: tuple[float, ...],
+               *,
+               triangles: set[tuple[int, int, int]],
+               lines: set[tuple[int, ...]]) -> None:
+
+        for i, (j, k, l) in enumerate(triangles):
+            Triangle.render(
+                (proj[j], proj[k], proj[l]),
+                (z[j], z[k], z[l]),
+                shading[i]
+            )
+
+        for p in lines:
+            for i in range(len(p) - 1):
+                Line.render(
+                    (proj[p[i]], proj[p[i+1]]),
+                    (z[p[i]], z[p[i+1]])
+                )
 
 class Piece(Mesh):
     points: tuple[Point, ...]
@@ -642,19 +688,20 @@ class Piece(Mesh):
         self.rot = np.array(rot, np.float64)
 
     @classmethod
-    def render(cls, proj: tuple[Vec2, ...], z: tuple[float, ...], char: str="") -> None:
-        for i, j, k in cls.triangles:
+    def render(cls, proj: tuple[Vec2, ...], z: tuple[float, ...], shading: tuple[float, ...], char: str="") -> None:
+        for i, (j, k, l) in enumerate(cls.triangles):
             Triangle.render(
-                (proj[i], proj[j], proj[k]),
-                (z[i], z[j], z[k]),
-                char
+                (proj[j], proj[k], proj[l]),
+                (z[j], z[k], z[l]),
+                shading[i],
+                char=char
             )
 
         for i, j in cls.lines:
             Line.render(
                 (proj[i], proj[j]),
                 (z[i], z[j]),
-                char
+                char=char
             )
 
     @classmethod
@@ -664,32 +711,31 @@ class Piece(Mesh):
 class King(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        divs = 8 # 4 times a factor of 90
-        offset = 15 * divs
+        offset = 15 * MESH_DIVS
 
-        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // divs))
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
         triangles = set()
         lines = set()
 
         for (y, m) in [
-            (-1, 0.4),      # 0 * divs
-            (-0.8, 0.4),    # 1 * divs
-            (-0.7, 0.3),    # 2 * divs
-            (-0.6, 0.3),    # 3 * divs
-            (-0.5, 0.2),    # 4 * divs
-            (-0.4, 0.15),   # 5 * divs
-            (-0.3, 0.125),  # 6 * divs
-            (-0.2, 0.1125), # 7 * divs
-            (-0.1, 0.1),    # 8 * divs
-            (0.1, 0.1),     # 9 * divs
-            (0.2, 0.2),     # 10 * divs
-            (0.3, 0.1),     # 11 * divs
-            (0.4, 0.1333),  # 12 * divs
-            (0.5, 0.1666),  # 13 * divs
-            (0.6, 0.2),     # 14 * divs
+            (-1, 0.4),      # 0 * MESH_DIVS
+            (-0.8, 0.4),    # 1 * MESH_DIVS
+            (-0.7, 0.3),    # 2 * MESH_DIVS
+            (-0.6, 0.3),    # 3 * MESH_DIVS
+            (-0.5, 0.2),    # 4 * MESH_DIVS
+            (-0.4, 0.15),   # 5 * MESH_DIVS
+            (-0.3, 0.125),  # 6 * MESH_DIVS
+            (-0.2, 0.1125), # 7 * MESH_DIVS
+            (-0.1, 0.1),    # 8 * MESH_DIVS
+            (0.1, 0.1),     # 9 * MESH_DIVS
+            (0.2, 0.2),     # 10 * MESH_DIVS
+            (0.3, 0.1),     # 11 * MESH_DIVS
+            (0.4, 0.1333),  # 12 * MESH_DIVS
+            (0.5, 0.1666),  # 13 * MESH_DIVS
+            (0.6, 0.2),     # 14 * MESH_DIVS
         ]:
-            points += [(m * sintab[i], y, m * sintab[i - (divs>>2)]) for i in range(divs)]
+            points += [(m * sintab[i], y, m * sintab[i - (MESH_DIVS>>2)]) for i in range(MESH_DIVS)]
 
         points += [
             (0, -1, 0),     # offset
@@ -700,21 +746,21 @@ class King(Piece):
         ]
 
         triangles.update({
-            ((i + 1) % divs, i, offset) for i in range(divs)
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
         })
 
-        for j in range(0, offset - divs, divs):
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + i, j + (i + 1) % divs, j + divs + i) for i in range(divs)
+                (j + i, j + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
-        for j in range(0, offset - divs, divs):
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + (i + 1) % divs, j + divs + (i + 1) % divs, j + divs + i) for i in range(divs)
+                (j + (i + 1) % MESH_DIVS, j + MESH_DIVS + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         triangles.update({
-            (offset - 1 - (i + 1) % divs, offset - 1 - i, offset + 1) for i in range(divs)
+            (offset - 1 - (i + 1) % MESH_DIVS, offset - 1 - i, offset + 1) for i in range(MESH_DIVS)
         })
 
         lines = {
@@ -729,32 +775,31 @@ class King(Piece):
 class Queen(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        divs = 8 # 4 times a factor of 90
-        offset = 15 * divs
+        offset = 15 * MESH_DIVS
 
-        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // divs))
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
         triangles = set()
         lines = set()
 
         for (y, m) in [
-            (-1, 0.4),      # 0 * divs
-            (-0.8, 0.4),    # 1 * divs
-            (-0.7, 0.3),    # 2 * divs
-            (-0.6, 0.3),    # 3 * divs
-            (-0.5, 0.2),    # 4 * divs
-            (-0.4, 0.15),   # 5 * divs
-            (-0.3, 0.125),  # 6 * divs
-            (-0.2, 0.1125), # 7 * divs
-            (-0.1, 0.1),    # 8 * divs
-            (0.1, 0.1),     # 9 * divs
-            (0.2, 0.2),     # 10 * divs
-            (0.3, 0.1),     # 11 * divs
-            (0.4, 0.1333),  # 12 * divs
-            (0.5, 0.1666),  # 13 * divs
-            (0.6, 0.2),     # 14 * divs
+            (-1, 0.4),      # 0 * MESH_DIVS
+            (-0.8, 0.4),    # 1 * MESH_DIVS
+            (-0.7, 0.3),    # 2 * MESH_DIVS
+            (-0.6, 0.3),    # 3 * MESH_DIVS
+            (-0.5, 0.2),    # 4 * MESH_DIVS
+            (-0.4, 0.15),   # 5 * MESH_DIVS
+            (-0.3, 0.125),  # 6 * MESH_DIVS
+            (-0.2, 0.1125), # 7 * MESH_DIVS
+            (-0.1, 0.1),    # 8 * MESH_DIVS
+            (0.1, 0.1),     # 9 * MESH_DIVS
+            (0.2, 0.2),     # 10 * MESH_DIVS
+            (0.3, 0.1),     # 11 * MESH_DIVS
+            (0.4, 0.1333),  # 12 * MESH_DIVS
+            (0.5, 0.1666),  # 13 * MESH_DIVS
+            (0.6, 0.2),     # 14 * MESH_DIVS
         ]:
-            points += [(m * sintab[i], y, m * sintab[i - (divs>>2)]) for i in range(divs)]
+            points += [(m * sintab[i], y, m * sintab[i - (MESH_DIVS>>2)]) for i in range(MESH_DIVS)]
 
         points += [
             (0, -1, 0),     # offset
@@ -762,21 +807,21 @@ class Queen(Piece):
         ]
 
         triangles.update({
-            ((i + 1) % divs, i, offset) for i in range(divs)
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
         })
 
-        for j in range(0, offset - divs, divs):
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + i, j + (i + 1) % divs, j + divs + i) for i in range(divs)
+                (j + i, j + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
-        for j in range(0, offset - divs, divs):
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + (i + 1) % divs, j + divs + (i + 1) % divs, j + divs + i) for i in range(divs)
+                (j + (i + 1) % MESH_DIVS, j + MESH_DIVS + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         triangles.update({
-            (offset - 1 - (i + 1) % divs, offset - 1 - i, offset + 1) for i in range(divs)
+            (offset - 1 - (i + 1) % MESH_DIVS, offset - 1 - i, offset + 1) for i in range(MESH_DIVS)
         })
 
         cls.points = tuple(Point(p) for p in points)
@@ -884,24 +929,26 @@ def handlein(camera: Camera) -> bool:
     return redraw
 
 
-def aproject(obj: AbstractObject, camera: Camera, a, kw):
-    p = obj.project(camera)
+# def aproject(obj: AbstractObject, camera: Camera, kw):
+#     p = obj.project(camera)
 
-    return obj, p, a, kw
+#     return obj, p, kw
 
-def render(objs: Collection[tuple[AbstractObject, tuple, dict]], camera: Camera) -> None:
+def render(objs: Collection[tuple[AbstractObject, dict]], camera: Camera) -> None:
     global screenbuffer, zbuffer
     screenbuffer = "\x1b[2J\x1b[H3D Terminal Chess\n\nWASD + QE \tmove\n ← ↑ ↓ →  \trotate\nspace/tab  \tup/down"
     zbuffer = {}
 
     # with Pool(5) as p:
-    #     proj = p.starmap(aproject, [(o, camera, a, kw) for o, a, kw in objs])
+    #     proj = p.starmap(aproject, [(o, camera, kw) for o, kw in objs])
 
-    # for o, p, a, kw in proj:
-    #     o.render(*p, *a, **kw)
+    # for o, p, kw in proj:
+    #     o.render(*p, **kw)
 
-    for o, a, kw in objs:
-        o.render(*o.project(camera), *a, **kw)
+    for o, kw in objs:
+        p = o.project(camera)
+
+        o.render(*p, **kw)
 
     # cells = list(enumerate(screenbuffer.split("\x1b[")))
     # cells.sort(key=lambda c: int((q := c[1].split(";", 1))[0]) * VW + int(q[1].split("H", 1)[0]) + 1/c[0])
@@ -931,8 +978,8 @@ def main() -> None:
 
     camera = Camera((0, 6, -7), (40, 0, 0))
 
-    xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), (), {"overdraw": True}) for x in range(-4, 5)]
-    zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), (), {"overdraw": True}) for z in range(-4, 5)]
+    # xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), {"overdraw": True}) for x in range(-4, 5)]
+    # zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), {"overdraw": True}) for z in range(-4, 5)]
 
     checkerboard = []
     cbpoints = [Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8]
@@ -946,8 +993,8 @@ def main() -> None:
         p3 = cbpoints[i + 9]
         p4 = cbpoints[i + 1]
 
-        checkerboard.append((Triangle(p3, p1, p2), (":",), {}))
-        checkerboard.append((Triangle(p1, p4, p2), (":",), {}))
+        checkerboard.append((Triangle(p3, p1, p2), {"char": ":"}))
+        checkerboard.append((Triangle(p1, p4, p2), {"char": ":"}))
 
     # points = [Point((x, y, z)) for x in (-1,1) for y in (-1,1) for z in (-1,1)]
     # lines = {(0,4),(1,5,4,6),(5,7,6,2,3),(7,3,1,0,2)}
@@ -961,12 +1008,12 @@ def main() -> None:
 
     objects = [
         *checkerboard,
-        *xgrid,
-        *zgrid,
-        (WKing, ("#",), {}),
-        (WQueen, ("#",), {}),
-        (BKing, (".",), {}),
-        (BQueen, (".",), {}),
+        # *xgrid,
+        # *zgrid,
+        (WKing, {"char": "#"}),
+        (WQueen, {"char": "#"}),
+        (BKing, {"char": "'"}),
+        (BQueen, {"char": "'"}),
     ]
 
     redraw = True
