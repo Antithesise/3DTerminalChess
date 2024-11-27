@@ -688,7 +688,12 @@ class Piece(Mesh):
         self.rot = np.array(rot, np.float64)
 
     @classmethod
-    def render(cls, proj: tuple[Vec2, ...], z: tuple[float, ...], shading: tuple[float, ...], char: str="") -> None:
+    def render(cls,
+               proj: tuple[Vec2, ...],
+               z: tuple[float, ...],
+               shading: tuple[float, ...],
+               *,
+               char: str="") -> None:
         for i, (j, k, l) in enumerate(cls.triangles):
             Triangle.render(
                 (proj[j], proj[k], proj[l]),
@@ -711,7 +716,7 @@ class Piece(Mesh):
 class King(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        offset = 15 * MESH_DIVS
+        offset = 12 * MESH_DIVS
 
         sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
@@ -726,16 +731,17 @@ class King(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (-0.2, 0.1125), # 7 * MESH_DIVS
-            (-0.1, 0.1),    # 8 * MESH_DIVS
-            (0.1, 0.1),     # 9 * MESH_DIVS
-            (0.2, 0.2),     # 10 * MESH_DIVS
-            (0.3, 0.1),     # 11 * MESH_DIVS
-            (0.4, 0.1333),  # 12 * MESH_DIVS
-            (0.5, 0.1666),  # 13 * MESH_DIVS
-            (0.6, 0.2),     # 14 * MESH_DIVS
+            (-0.1, 0.1),    # 7 * MESH_DIVS
+            (0.1, 0.1),     # 8 * MESH_DIVS
+            (0.2, 0.2),     # 9 * MESH_DIVS
+            (0.3, 0.1),     # 10 * MESH_DIVS
+            (0.6, 0.2),     # 11 * MESH_DIVS
         ]:
-            points += [(m * sintab[i], y, m * sintab[i - (MESH_DIVS>>2)]) for i in range(MESH_DIVS)]
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
 
         points += [
             (0, -1, 0),     # offset
@@ -751,16 +757,22 @@ class King(Piece):
 
         for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + i, j + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + (i + 1) % MESH_DIVS, j + MESH_DIVS + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         triangles.update({
-            (offset - 1 - (i + 1) % MESH_DIVS, offset - 1 - i, offset + 1) for i in range(MESH_DIVS)
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
         })
 
         lines = {
@@ -775,7 +787,7 @@ class King(Piece):
 class Queen(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        offset = 15 * MESH_DIVS
+        offset = 12 * MESH_DIVS
 
         sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
@@ -790,16 +802,17 @@ class Queen(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (-0.2, 0.1125), # 7 * MESH_DIVS
-            (-0.1, 0.1),    # 8 * MESH_DIVS
-            (0.1, 0.1),     # 9 * MESH_DIVS
-            (0.2, 0.2),     # 10 * MESH_DIVS
-            (0.3, 0.1),     # 11 * MESH_DIVS
-            (0.4, 0.1333),  # 12 * MESH_DIVS
-            (0.5, 0.1666),  # 13 * MESH_DIVS
-            (0.6, 0.2),     # 14 * MESH_DIVS
+            (-0.1, 0.1),    # 7 * MESH_DIVS
+            (0.1, 0.1),     # 8 * MESH_DIVS
+            (0.2, 0.2),     # 9 * MESH_DIVS
+            (0.3, 0.1),     # 10 * MESH_DIVS
+            (0.6, 0.2),     # 11 * MESH_DIVS
         ]:
-            points += [(m * sintab[i], y, m * sintab[i - (MESH_DIVS>>2)]) for i in range(MESH_DIVS)]
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
 
         points += [
             (0, -1, 0),     # offset
@@ -812,16 +825,22 @@ class Queen(Piece):
 
         for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + i, j + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         for j in range(0, offset - MESH_DIVS, MESH_DIVS):
             triangles.update({
-                (j + (i + 1) % MESH_DIVS, j + MESH_DIVS + (i + 1) % MESH_DIVS, j + MESH_DIVS + i) for i in range(MESH_DIVS)
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
             })
 
         triangles.update({
-            (offset - 1 - (i + 1) % MESH_DIVS, offset - 1 - i, offset + 1) for i in range(MESH_DIVS)
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
         })
 
         cls.points = tuple(Point(p) for p in points)
@@ -936,7 +955,7 @@ def handlein(camera: Camera) -> bool:
 
 def render(objs: Collection[tuple[AbstractObject, dict]], camera: Camera) -> None:
     global screenbuffer, zbuffer
-    screenbuffer = "\x1b[2J\x1b[H3D Terminal Chess\n\nWASD + QE \tmove\n ← ↑ ↓ →  \trotate\nspace/tab  \tup/down"
+    screenbuffer = "\x1b[2J"
     zbuffer = {}
 
     # with Pool(5) as p:
@@ -968,7 +987,7 @@ def render(objs: Collection[tuple[AbstractObject, dict]], camera: Camera) -> Non
 
     #     py, px = y, x
 
-    #
+    screenbuffer += "\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
 
     print(end=screenbuffer, flush=True)
 
