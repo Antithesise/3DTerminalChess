@@ -711,7 +711,7 @@ class King(Piece):
             (0.1, 0.1),     # 7 * MESH_DIVS
             (0.2, 0.2),     # 8 * MESH_DIVS
             (0.3, 0.1),     # 9 * MESH_DIVS
-            (0.6, 0.2),     # 10 * MESH_DIVS
+            (0.55, 0.2),    # 10 * MESH_DIVS
         ]:
             points += [(
                 m * sintab[i],
@@ -791,7 +791,185 @@ class Queen(Piece):
 
         points += [
             (0, -1, 0),     # offset
-            (0, 0.6, 0),    # offset + 1
+            (0, 0.7, 0),    # offset + 1
+        ]
+
+        triangles.update({
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
+        })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
+        })
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
+
+class Rook(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        offset = 10 * MESH_DIVS
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.38),      # 0 * MESH_DIVS
+            (-0.85, 0.35),    # 1 * MESH_DIVS
+            (-0.75, 0.25),    # 2 * MESH_DIVS
+            (-0.65, 0.25),    # 3 * MESH_DIVS
+            (-0.55, 0.18),    # 4 * MESH_DIVS
+            (-0.45, 0.15),   # 5 * MESH_DIVS
+            (-0.35, 0.125),  # 6 * MESH_DIVS
+            (-0.15, 0.1),    # 7 * MESH_DIVS
+            (-0.1, 0.2),    # 8 * MESH_DIVS
+            (0.15, 0.2)      # 9 * MESH_DIVS
+        ]:
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
+
+        points += [
+            (0, -1, 0),     # offset
+            (0, 0.15, 0),    # offset + 1
+        ]
+
+        triangles.update({
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
+        })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
+        })
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
+
+class Bishop(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        offset = 11 * MESH_DIVS
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.35),     # 0 * MESH_DIVS
+            (-0.85, 0.35),  # 1 * MESH_DIVS
+            (-0.75, 0.25),  # 2 * MESH_DIVS
+            (-0.65, 0.25),  # 3 * MESH_DIVS
+            (-0.55, 0.18),  # 4 * MESH_DIVS
+            (-0.45, 0.15),  # 5 * MESH_DIVS
+            (-0.35, 0.125), # 6 * MESH_DIVS
+            (-0.05, 0.1),   # 7 * MESH_DIVS
+            (0, 0.2),       # 8 * MESH_DIVS
+            (0.05, 0.1),    # 8 * MESH_DIVS
+            (0.22, 0.17)     # 9 * MESH_DIVS
+        ]:
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
+
+        points += [
+            (0, -1, 0),     # offset
+            (0, 0.5, 0),   # offset + 1
+        ]
+
+        triangles.update({
+            ((i + 1) % MESH_DIVS, i, offset) for i in range(MESH_DIVS)
+        })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + i,
+                 j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        for j in range(0, offset - MESH_DIVS, MESH_DIVS):
+            triangles.update({
+                (j + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + (i + 1) % MESH_DIVS,
+                 j + MESH_DIVS + i) for i in range(MESH_DIVS)
+            })
+
+        triangles.update({
+            (offset - 1 - (i + 1) % MESH_DIVS,
+             offset - 1 - i,
+             offset + 1) for i in range(MESH_DIVS)
+        })
+
+        cls.points = tuple(Point(p) for p in points)
+        cls.triangles = triangles
+        cls.lines = lines
+
+class Knight(Piece):
+    @classmethod
+    def gen_mesh(cls) -> None:
+        offset = 4 * MESH_DIVS
+
+        sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
+        points = []
+        triangles = set()
+        lines = set()
+
+        for (y, m) in [
+            (-1, 0.35),     # 0 * MESH_DIVS
+            (-0.85, 0.35),  # 1 * MESH_DIVS
+            (-0.75, 0.25),  # 2 * MESH_DIVS
+            (-0.65, 0.25),  # 3 * MESH_DIVS
+        ]:
+            points += [(
+                m * sintab[i],
+                y,
+                m * sintab[i - (MESH_DIVS>>2)]
+            ) for i in range(MESH_DIVS)]
+
+        points += [
+            (0, -1, 0),     # offset
+            (0, 0.25, 0),   # offset + 1
         ]
 
         triangles.update({
@@ -834,16 +1012,16 @@ class Pawn(Piece):
 
         for (y, m) in [
             (-1, 0.35),     # 0 * MESH_DIVS
-            (-0.87, 0.32),   # 1 * MESH_DIVS
+            (-0.87, 0.32),  # 1 * MESH_DIVS
             (-0.8, 0.22),   # 2 * MESH_DIVS
             (-0.67, 0.13),  # 3 * MESH_DIVS
-            (-0.37, 0.1),    # 4 * MESH_DIVS
+            (-0.37, 0.1),   # 4 * MESH_DIVS
             (-0.32, 0.2),   # 5 * MESH_DIVS
-            (-0.27, 0.1),    # 6 * MESH_DIVS
+            (-0.27, 0.1),   # 6 * MESH_DIVS
             (-0.2, 0.17),   # 7 * MESH_DIVS
             (-0.1, 0.2),    # 8 * MESH_DIVS
             (0, 0.17),      # 9 * MESH_DIVS
-            (0.07, 0.1),      # 10 * MESH_DIVS
+            (0.07, 0.1)     # 10 * MESH_DIVS
         ]:
             points += [(
                 m * sintab[i],
@@ -931,4 +1109,7 @@ def render(objs: Collection[tuple[AbstractObject, dict]], camera: Camera) -> Non
 
 King.gen_mesh()
 Queen.gen_mesh()
+Rook.gen_mesh()
+Bishop.gen_mesh()
+Knight.gen_mesh()
 Pawn.gen_mesh()

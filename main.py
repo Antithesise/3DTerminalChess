@@ -136,10 +136,22 @@ def main() -> None:
 
     WKing = King((0.5, 0, -3.5))
     WQueen = Queen((-0.5, 0, -3.5))
+    WKRook = Rook((-3.5, 0, -3.5))
+    WQRook = Rook((3.5, 0, -3.5))
+    WKBishop = Bishop((-1.5, 0, -3.5))
+    WQBishop = Bishop((1.5, 0, -3.5))
+    WKKnight = Knight((-2.5, 0, -3.5))
+    WQKnight = Knight((2.5, 0, -3.5))
     WPawns = [(Pawn((x - 3.5, 0, -2.5)), {"char": "#"}) for x in range(8)]
 
     BKing = King((0.5, 0, 3.5))
     BQueen = Queen((-0.5, 0, 3.5))
+    BKRook = Rook((-3.5, 0, 3.5))
+    BQRook = Rook((3.5, 0, 3.5))
+    BKBishop = Bishop((-1.5, 0, 3.5))
+    BQBishop = Bishop((1.5, 0, 3.5))
+    BKKnight = Knight((-2.5, 0, 3.5))
+    BQKnight = Knight((2.5, 0, 3.5))
     BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": "'"}) for x in range(8)]
 
     objects = [
@@ -149,9 +161,21 @@ def main() -> None:
         *border,
         (WKing, {"char": "#"}),
         (WQueen, {"char": "#"}),
+        (WKRook, {"char": "#"}),
+        (WQRook, {"char": "#"}),
+        (WKBishop, {"char": "#"}),
+        (WQBishop, {"char": "#"}),
+        (WKKnight, {"char": "#"}),
+        (WQKnight, {"char": "#"}),
         *WPawns,
         (BKing, {"char": "'"}),
         (BQueen, {"char": "'"}),
+        (BKRook, {"char": "'"}),
+        (BQRook, {"char": "'"}),
+        (BKBishop, {"char": "'"}),
+        (BQBishop, {"char": "'"}),
+        (BKKnight, {"char": "'"}),
+        (BQKnight, {"char": "'"}),
         *BPawns,
     ]
 
