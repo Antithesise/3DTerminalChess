@@ -1,7 +1,10 @@
-from time import sleep
+from time import sleep, time
 
 from input import getch, isansitty, kbhit
 from graphics import *
+
+
+DEBUG = True
 
 
 def handlein(camera: Camera) -> bool:
@@ -21,118 +24,117 @@ def handlein(camera: Camera) -> bool:
             case 80: # down
                 camera.rot += [5, 0, 0]
 
-            case 83: # delete
-                pass
+            # case 83: # delete
+            #     pass
 
-            case 115: # ctrl+left
-                pass
+            # case 115: # ctrl+left
+            #     pass
 
-            case 116: # ctrl+right
-                pass
+            # case 116: # ctrl+right
+            #     pass
 
-            case _:
-                pass
+            # case _:
+            #     pass
 
-        if key in [75, 77]:
-            redraw = True
-
-        elif key in [72, 80]:
+        if key in [72, 75, 77, 80]:
             redraw = True
 
     else:
         match key:
-            case 1: # ctrl+a
-                pass
+            # case 1: # ctrl+a
+            #     pass
 
-            case 8: # backspace
-                pass
+            # case 8: # backspace
+            #     pass
 
             case 9: # tab:
                 camera.pos += [0, -0.2, 0]
 
-            case 10 | 13: # newline / carriage return
-                pass
+            # case 10 | 13: # newline / carriage return
+            #     pass
 
-            case 14: # ctrl+n:
-                pass
+            # case 14: # ctrl+n:
+            #     pass
 
-            case 15: # ctrl+o:
-                pass
+            # case 15: # ctrl+o:
+            #     pass
 
-            case 17: # ctrl+q
-                pass
+            # case 17: # ctrl+q
+            #     pass
 
-            case 19: # ctrl+s:
-                pass
+            # case 19: # ctrl+s:
+            #     pass
 
-            case 22: # ctrl+v, sometimes?
-                pass
+            # case 22: # ctrl+v, sometimes?
+            #     pass
 
-            case 23: # ctrl+w:
-                pass
+            # case 23: # ctrl+w:
+            #     pass
 
-            case 27: # escape:
-                pass
+            # case 27: # escape:
+            #     pass
 
-            case 31: # ctrl+/
-                pass
+            # case 31: # ctrl+/
+            #     pass
 
-            case k if k < 32: # any other weird sequence
-                pass
+            # case k if k < 32: # any other weird sequence
+            #     pass
 
             case 32: # space
                 camera.pos += [0, 0.2, 0]
-            case 113: # q
-                camera.pos += [-0.14, 0, 0.14] @ camera.yrotmat
-            case 119: # w
-                camera.pos += [0, 0, 0.2] @ camera.yrotmat
-            case 101: # e
-                camera.pos += [0.14, 0, 0.14] @ camera.yrotmat
             case 97: # a
                 camera.pos += [-0.2, 0, 0] @ camera.yrotmat
-            case 115: # s
-                camera.pos += [0, 0, -0.2] @ camera.yrotmat
             case 100: # d
                 camera.pos += [0.2, 0, 0]  @ camera.yrotmat
+            case 101: # e
+                camera.pos += [0.14, 0, 0.14] @ camera.yrotmat
+            case 113: # q
+                camera.pos += [-0.14, 0, 0.14] @ camera.yrotmat
+            case 115: # s
+                camera.pos += [0, 0, -0.2] @ camera.yrotmat
+            case 119: # w
+                camera.pos += [0, 0, 0.2] @ camera.yrotmat
 
-            case _:
-                pass
+            # case _:
+            #     pass
 
         if key in [9, 32, 97, 100, 101, 113, 115, 119]:
             redraw = True
 
     return redraw
 
+
 def main() -> None:
     camera = Camera((0, 6, -7), (40, 0, 0))
 
     # xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), {"overdraw": True}) for x in range(-3, 4)]
     # zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), {"overdraw": True}) for z in range(-3, 4)]
-    border = [
-        (Line(Point((-4, -1, -4)), Point((-4, -1, 4))), {"overdraw": True}),
-        (Line(Point((4, -1, -4)), Point((4, -1, 4))), {"overdraw": True}),
-        (Line(Point((-4, -1, -4)), Point((4, -1, -4))), {"overdraw": True}),
-        (Line(Point((-4, -1, 4)), Point((4, -1, 4))), {"overdraw": True})
+    bpoints = [
+        Point((-4, -1, -4)),
+        Point((-4, -1, 4)),
+        Point((4, -1, 4)),
+        Point((4, -1, -4))
     ]
+    border = [(Line(bpoints[i], bpoints[(i+1) % 4]), {"overdraw": True}) for i in range(4)]
 
-    checkerboard = []
-    cbpoints = [Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8]
+    cbpoints = tuple(Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
+    cbtris = tuple((i, i + 10, i + 9) for i in range(0, 70, 2) if i % 18 < 16) +\
+             tuple((i, i + 1, i + 10) for i in range(0, 70, 2) if i % 18 < 16)
 
-    for i in range(0, 70, 2):
-        if i % 18 >= 16:
-            continue
+    cb = Mesh(cbpoints, cbtris, ())
 
-        p1 = cbpoints[i]
-        p2 = cbpoints[i + 10]
-        p3 = cbpoints[i + 9]
-        p4 = cbpoints[i + 1]
 
-        checkerboard.append((Triangle(p3, p1, p2), {"char": ":"}))
-        checkerboard.append((Triangle(p1, p4, p2), {"char": ":"}))
+    # for i in range(0, 70, 2):
+    #     if i % 18 >= 16:
+    #         continue
 
-    # points = [Point((x, y, z)) for x in (-1,1) for y in (-1,1) for z in (-1,1)]
-    # lines = {(0,4),(1,5,4,6),(5,7,6,2,3),(7,3,1,0,2)}
-    # cube = Mesh(points, lines)
+    #     p1 = cbpoints[i]
+    #     p2 = cbpoints[i + 10]
+    #     p3 = cbpoints[i + 9]
+    #     p4 = cbpoints[i + 1]
+
+    #     cb.append((Triangle(p1, p2, p3), {"char": ":"}))
+    #     cb.append((Triangle(p1, p4, p2), {"char": ":"}))
 
     WKing = King((0.5, 0, -3.5))
     WQueen = Queen((-0.5, 0, -3.5))
@@ -155,7 +157,7 @@ def main() -> None:
     BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": "'"}) for x in range(8)]
 
     objects = [
-        *checkerboard,
+        (cb, {"char": ":"}),
         # *xgrid,
         # *zgrid,
         *border,
@@ -179,16 +181,33 @@ def main() -> None:
         *BPawns,
     ]
 
+    NOBJS = len(objects)
+
     redraw = True
+    t = time()
 
     while True:
         if redraw:
-            render(objects, camera)
+            redraw = False
 
-            print(end="\x1b[%d;%dH\x1b[31m+\x1b[0m" % (VH/2, VW/2), flush=True)
+            t = time()
+            polygons, verts = render(objects, camera)
+
+            if DEBUG:
+                dt = time() - t
+
+                print(
+                    f"\n\nBody Count: {NOBJS:10d}",
+                    f"Poly Count: {polygons:10d}",
+                    f"Vert Count: {verts:10d}",
+                    f"Delta Time: {dt:10.3f}s",
+                    f"Extrap FPS: {1/dt:10.2f}",
+                    sep="\n",
+                    flush=True
+                )
 
         while not kbhit():
-            sleep(0.01)
+            sleep(0.0001)
 
         redraw = handlein(camera)
 
