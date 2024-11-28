@@ -107,17 +107,17 @@ def handlein(camera: Camera) -> bool:
 def main() -> None:
     camera = Camera((0, 6, -7), (40, 0, 0))
 
-    # xgrid = [(Line(Point((x, -1, -4)), Point((x, -1, 4))), {"overdraw": True}) for x in range(-3, 4)]
-    # zgrid = [(Line(Point((-4, -1, z)), Point((4, -1, z))), {"overdraw": True}) for z in range(-3, 4)]
+    # xgrid = [(Line((x, -1, -4), (x, -1, 4)), {"overdraw": True}) for x in range(-3, 4)]
+    # zgrid = [(Line((-4, -1, z), (4, -1, z)), {"overdraw": True}) for z in range(-3, 4)]
     bpoints = [
-        Point((-4, -1, -4)),
-        Point((-4, -1, 4)),
-        Point((4, -1, 4)),
-        Point((4, -1, -4))
+        (-4, -1, -4),
+        (-4, -1, 4),
+        (4, -1, 4),
+        (4, -1, -4)
     ]
     border = [(Line(bpoints[i], bpoints[(i+1) % 4]), {"overdraw": True}) for i in range(4)]
 
-    cbpoints = tuple(Point((x, -1, z)) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
+    cbpoints = tuple((x, -1, z) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
     cbtris = tuple((i, i + 10, i + 9) for i in range(0, 70, 2) if i % 18 < 16) +\
              tuple((i, i + 1, i + 10) for i in range(0, 70, 2) if i % 18 < 16)
 
@@ -191,16 +191,13 @@ def main() -> None:
             redraw = False
 
             t = time()
-            polygons, verts = render(objects, camera)
+            render(objects, camera)
+            dt = time() - t
 
             if DEBUG:
-                dt = time() - t
-
                 print(
                     f"\n\nBody Count: {NOBJS:10d}",
-                    f"Poly Count: {polygons:10d}",
-                    f"Vert Count: {verts:10d}",
-                    f"Delta Time: {dt:10.3f}s",
+                    f"Delta Time: {dt:10.4f}s",
                     f"Extrap FPS: {1/dt:10.2f}",
                     sep="\n",
                     flush=True

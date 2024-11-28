@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from bisect import bisect_left
 from functools import lru_cache
-from math import ceil, copysign, cos, radians, sin, sqrt
+from math import ceil, copysign, cos, hypot, radians, sin, sqrt
 from os import get_terminal_size
 # from random import randint
 from sys import float_info
@@ -39,6 +39,7 @@ GRADCHARS = {
 }
 GRADS = [-4, -2, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2, 4]
 
+
 Vec3 = tuple[float, float, float] | ArrayLike
 
 class Vec2[T: (float, int)](NamedTuple):
@@ -67,8 +68,6 @@ class Vec2[T: (float, int)](NamedTuple):
 screenbuffer = EMPTYBUFFER[:]
 zbuffer: dict[int, float] = {}
 
-polygons = verts = 0
-
 
 @lru_cache(CACHE_SIZE)
 def gradmap(grad: float):
@@ -92,7 +91,7 @@ def normal(p1: tuple[float, float, float],
     p = array(p1, float64)
     N = cross(p2 - p, p3 - p)
 
-    return N / npsqrt((N ** 2).sum())
+    return N / hypot(*N)
 
 @lru_cache(CACHE_SIZE)
 def rotmat(rx: float, ry: float, rz: float) -> NDArray:
@@ -240,7 +239,7 @@ class Camera(AbstractObject):
         self.foclen = foclen
 
     @lru_cache(CACHE_SIZE)
-    def __project(self, rot: tuple[float, float, float], pos: tuple[float, float, float], fl: float) -> tuple[tuple[Vec2], tuple[float]]:
+    def __project(self, pos: tuple[float, float, float], fl: float) -> tuple[tuple[Vec2], tuple[float]]:
         dx, dy, dz = (self.rotmat @ (array(pos) + [0, 0, fl]))
 
         if dz == 0: dz = FMIN
@@ -250,8 +249,8 @@ class Camera(AbstractObject):
 
         return (transform(bx, by),), (dz,)
 
-    def project(self, obj: AbstractObject) -> tuple[tuple[Vec2], tuple[float]]:
-        res, clip = self.__project(tuple(self.rot), tuple(obj.pos - self.pos), self.foclen)
+    def project(self, pos: Vec3) -> tuple[tuple[Vec2], tuple[float]]:
+        res, clip = self.__project(tuple(pos - self.pos), self.foclen)
 
         return (Vec2(*res[0]),), clip # deepcopy to prevent side effects
 
@@ -268,77 +267,48 @@ class Point(AbstractObject):
         self.rot = array(rot, float64)
 
     def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...]]:
-        return camera.project(self)
+        return camera.project(self.pos)
 
     @classmethod
     def render(cls, proj: tuple[Vec2], z: tuple[float], char: str="#") -> None:
-        global verts
-
         for p, c in zip(proj, z):
             if c <= 0:
                 continue
 
-            verts += 1
             write(*p, c, char)
 
 class Line(AbstractObject):
-    p1: Point
-    p2: Point
+    p1: tuple[float, float, float]
+    p2: tuple[float, float, float]
     worldloc: bool
 
-    @overload
     def __init__(self,
-                 p1: Point, p2: Point,
-                 /, *,
-                 pos: Vec3=...,
-                 rot: Vec3=...,
-                 worldloc: bool=True) -> None: ...
-
-    @overload
-    def __init__(self,
-                 *p: Point,
-                 pos: Vec3=...,
-                 rot: Vec3=...,
-                 worldloc: bool=True) -> None: ...
-
-    def __init__(self,
-                 *p,
+                 p1: tuple[float, float, float],
+                 p2: tuple[float, float, float],
+                 *,
                  pos: Vec3=(0,0,0),
                  rot: Vec3=(0,0,0),
                  worldloc: bool=True) -> None:
 
-        self.p1, self.p2 = p # hope p is correct length
+        self.p1, self.p2 = p1, p2
         self.worldloc = worldloc
 
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...]]:
-        res = []
-        z = []
-
-        p1, p2 = self.p1, self.p2
-
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, Vec2], tuple[float, float]]:
         if self.worldloc:
-            res, z = camera.project(p1)
-            r, c = camera.project(p2)
-            res += r
-            z += c
+            r1, c1 = camera.project(self.p1)
+            r2, c2 = camera.project(self.p2)
 
         else:
-            res, z = camera.project(Point(
-                self.pos + (self.rotmat @ p1.pos.T).T,
-                self.rot + p1.rot
-            ))
-            r, c = camera.project(Point(
-                self.pos + (self.rotmat @ p2.pos.T).T,
-                self.rot + p2.rot
-            ))
+            rm = self.rotmat
+            pos = self.pos
 
-            res += r
-            z += c
+            r1, c1 = camera.project(pos + (rm @ self.p1))
+            r2, c2 = camera.project(pos + (rm @ self.p2))
 
-        return res, z
+        return r1 + r2, c1 + c2
 
     @classmethod
     def render(cls,
@@ -350,8 +320,6 @@ class Line(AbstractObject):
         """
         Good old Bresenham
         """
-
-        global verts
 
         if z[0] <= 0 and z[1] <= 0:
             return
@@ -366,15 +334,13 @@ class Line(AbstractObject):
             p1.y < 1 > p2.y or p1.y > VH - 1 < p2.y:
             return
 
-        verts += 2
-
         c = max(z)
 
         dx, dy = p2 - p1
         sx = int(copysign(1, dx))
         sy = int(copysign(1, dy))
-        x1, y1 = round(p1)
-        x2, y2 = round(p2)
+        x1, y1 = p1
+        x2, y2 = p2
 
         char = char or gradmap(-dy / (dx or FMIN))
 
@@ -478,70 +444,40 @@ class Line(AbstractObject):
 
 
 class Triangle(AbstractObject):
-    p1: Point
-    p2: Point
-    p3: Point
+    p1: tuple[float, float, float]
+    p2: tuple[float, float, float]
+    p3: tuple[float, float, float]
     worldloc: bool
 
-    @overload
     def __init__(self,
-                 p1: Point, p2: Point, p3: Point,
-                 /, *,
-                 pos: Vec3=...,
-                 rot: Vec3=...,
-                 worldloc: bool=True) -> None: ...
-
-    @overload
-    def __init__(self,
-                 *p: Point,
-                 pos: Vec3=...,
-                 rot: Vec3=...,
-                 worldloc: bool=True) -> None: ...
-
-    def __init__(self,
-                 *p,
+                 p1: tuple[float, float, float],
+                 p2: tuple[float, float, float],
+                 p3: tuple[float, float, float],
+                 *,
                  pos: Vec3=(0,0,0),
                  rot: Vec3=(0,0,0),
                  worldloc: bool=True) -> None:
-
-        self.p1, self.p2, self.p3 = p[:3]
+        self.p1, self.p2, self.p3 = p1, p2, p3
         self.worldloc = worldloc
 
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...]]:
-        res = []
-        z = []
-
+    def project(self, camera: Camera) -> tuple[tuple[Vec2, Vec2, Vec2], tuple[float, float, float]]:
         if self.worldloc:
-            res, z = camera.project(self.p1)
-            r, c = camera.project(self.p2)
-            res += r
-            z += c
-            r, c = camera.project(self.p3)
-            res += r
-            z += c
+            r1, c1 = camera.project(self.p1)
+            r2, c2 = camera.project(self.p2)
+            r3, c3 = camera.project(self.p3)
 
         else:
-            res, z = camera.project(Point(
-                self.pos + (self.rotmat @ self.p1.pos.T).T,
-                self.rot + self.p1.rot
-            ))
-            r, c = camera.project(Point(
-                self.pos + (self.rotmat @ self.p2.pos.T).T,
-                self.rot + self.p2.rot
-            ))
-            res += r
-            z += c
-            r, c = camera.project(Point(
-                self.pos + (self.rotmat @ self.p3.pos.T).T,
-                self.rot + self.p3.rot
-            ))
-            res += r
-            z += c
+            rm = self.rotmat
+            pos = self.pos
 
-        return res, z
+            r1, c1 = camera.project(pos + (rm @ self.p1))
+            r2, c2 = camera.project(pos + (rm @ self.p2))
+            r3, c3 = camera.project(pos + (rm @ self.p3))
+
+        return r1 + r2 + r3, c1 + c2 + c3
 
     @classmethod
     def render(cls,
@@ -555,11 +491,6 @@ class Triangle(AbstractObject):
         https://web.archive.org/web/20050408192410/http://sw-shader.sourceforge.net/rasterizer.html
         """
 
-        global polygons, verts
-
-        if z[0] <= 0 and z[1] <= 0 and z[2] <= 0:
-            return
-
         (x1, y1), (x2, y2), (x3, y3) = proj # hope proj is correct length
 
         # backface culling
@@ -569,18 +500,13 @@ class Triangle(AbstractObject):
             # (x2, y2), (x1, y1), (x3, y3) = proj # reverse winding
 
         # viewport culling
-        if  (x1 < 1 and x2 < 1 and x3 < 1) or (x1 > VW and x2 > VW and x3 > VW) or\
+        elif  (z[0] <= 0 and z[1] <= 0 and z[2] <= 0) or\
+            (x1 < 1 and x2 < 1 and x3 < 1) or (x1 > VW and x2 > VW and x3 > VW) or\
             (y1 < 1 and y2 < 1 and y3 < 1) or (y1 > VH and y2 > VH and y3 > VH):
                 return
 
-        if shading >= 0:
-            char = "\x1b[38;5;%dm%c\x1b[0m" % (
-                int(255.5 - 23 * sqrt(shading**3)),
-                char
-            )
-
-        polygons += 1
-        verts += 3
+        elif shading >= 0:
+            char = f"\x1b[38;5;{int(255.5 - 23 * sqrt(shading**3))}m{char}\x1b[0m"
 
         c = max(z)
 
@@ -593,17 +519,17 @@ class Triangle(AbstractObject):
         dy31 = y3 - y1
 
         minx = int(min(x1, x2, x3, VW))
-        maxx = ceil(max(x1, x2, x3, 0))
+        maxx = int(max(x1, x2, x3, 0) + 0.999999)
         miny = int(min(y1, y2, y3, VH))
-        maxy = ceil(max(y1, y2, y3, 0))
+        maxy = int(max(y1, y2, y3, 0) + 0.999999)
 
         c1 = dy12 * x1 - dx12 * y1
         c2 = dy23 * x2 - dx23 * y2
         c3 = dy31 * x3 - dx31 * y3
 
-        c1 += (dy12 < 0 or (dy12 == 0 and dx12 > 0))
-        c2 += (dy23 < 0 or (dy23 == 0 and dx23 > 0))
-        c3 += (dy31 < 0 or (dy31 == 0 and dx31 > 0))
+        c1 = c1 + (dy12 < 0 or (dy12 == 0 and dx12 > 0))
+        c2 = c2 + (dy23 < 0 or (dy23 == 0 and dx23 > 0))
+        c3 = c3 + (dy31 < 0 or (dy31 == 0 and dx31 > 0))
 
         cy1 = c1 + dx12 * miny - dy12 * minx
         cy2 = c2 + dx23 * miny - dy23 * minx
@@ -618,22 +544,22 @@ class Triangle(AbstractObject):
                 if cx1 >= 0 and cx2 >= 0 and cx3 >= 0:
                     write(x, y, c, char)
 
-                cx1 -= dy12
-                cx2 -= dy23
-                cx3 -= dy31
+                cx1 = cx1 - dy12
+                cx2 = cx2 - dy23
+                cx3 = cx3 - dy31
 
-            cy1 += dx12
-            cy2 += dx23
-            cy3 += dx31
+            cy1 = cy1 + dx12
+            cy2 = cy2 + dx23
+            cy3 = cy3 + dx31
 
 class Mesh(AbstractObject):
-    points: tuple[Point, ...]
+    points: tuple[tuple[float, float, float], ...]
     triangles: tuple[tuple[int, int, int], ...]
     lines: tuple[tuple[int, ...], ...]
     worldloc: bool
 
     def __init__(self,
-                 points: tuple[Point, ...],
+                 points: tuple[tuple[float, float, float], ...],
                  triangles: tuple[tuple[int, int, int], ...],
                  lines: tuple[tuple[int, ...], ...],
                  pos: Vec3=(0,0,0),
@@ -655,38 +581,33 @@ class Mesh(AbstractObject):
         points = self.points
 
         return 0.5 + dot(normal(
-            tuple(points[i].pos),
-            tuple(points[j].pos),
-            tuple(points[k].pos)
+            tuple(points[i]),
+            tuple(points[j]),
+            tuple(points[k])
         ), LIGHTNORM) / 2
 
-    @lru_cache(CACHE_SIZE)
-    def _transform(self, p: Point) -> Point:
-        return Point(
-            self.pos + (self.rotmat @ p.pos),
-            self.rot + p.rot
-        )
-
     def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...], tuple[float, ...]]:
-        res = ()
-        clip = ()
-        shading = ()
+        res = []
+        clip = []
 
         if self.worldloc:
             for p in self.points:
                 r, c = camera.project(p)
-                res += r
-                clip += c
+                res.extend(r)
+                clip.extend(c)
 
         else:
+            rm = self.rotmat
+            pos = self.pos
+
             for p in self.points:
-                r, c = camera.project(self._transform(p))
-                res += r
-                clip += c
+                r, c = camera.project(pos + (rm @ p))
+                res.extend(r)
+                clip.extend(c)
 
         shading = tuple(map(self._shade, self.triangles))
 
-        return res, clip, shading
+        return tuple(res), tuple(clip), shading
 
     def render(self,
                proj: tuple[Vec2, ...],
@@ -712,7 +633,7 @@ class Mesh(AbstractObject):
                 )
 
 class Piece(Mesh):
-    points: tuple[Point, ...]
+    points: tuple[tuple[float, float, float], ...]
     triangles: tuple[tuple[int, int, int], ...]
     lines: tuple[tuple[int, int], ...]
     worldloc = False
@@ -813,7 +734,7 @@ class King(Piece):
             (offset + 3, offset + 4)
         )
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
@@ -872,7 +793,7 @@ class Queen(Piece):
              offset + 1) for i in range(MESH_DIVS)
         ]
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
@@ -930,7 +851,7 @@ class Rook(Piece):
              offset + 1) for i in range(MESH_DIVS)
         ]
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
@@ -989,7 +910,7 @@ class Bishop(Piece):
              offset + 1) for i in range(MESH_DIVS)
         ]
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
@@ -1041,7 +962,7 @@ class Knight(Piece):
              offset + 1) for i in range(MESH_DIVS)
         ]
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
@@ -1100,40 +1021,27 @@ class Pawn(Piece):
              offset + 1) for i in range(MESH_DIVS)
         ]
 
-        cls.points = tuple(Point(p) for p in points)
+        cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
 
 
-# def arender(camera: Camera, obj: AbstractObject, kw):
-#     return obj.project(camera), obj, kw
-
-def render(objs: Collection[tuple[AbstractObject, dict[str, Any]]], camera: Camera) -> tuple[int, int]:
-    global screenbuffer, zbuffer, polygons, verts
-    screenbuffer = EMPTYBUFFER[:]
-    zbuffer = {}
-
-    polygons = 0
-    verts = 0
-
-    # with Pool() as pool:
-    #     proj = pool.starmap(partial(arender, camera), objs)
-
-    # for p, o, kw in proj:
-    #     o.render(*p, **kw)
+def render(objs: Collection[tuple[AbstractObject, dict[str, Any]]], camera: Camera) -> None:
+    screenbuffer[:] = EMPTYBUFFER # fastest
+    zbuffer.clear() # fastest
 
     for o, kw in objs:
         p = o.project(camera)
-
         o.render(*p, **kw)
 
 
-    res = "\x1b[2J\x1b[H"
-    res += "".join((c if screenbuffer[i - 1] else f"\x1b[{i//VW+1};{i%VW+1}H{c}") for i, c in enumerate(screenbuffer) if c)
-    res += "\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
+    res = f"\x1b[2J\x1b[H{\
+        "".join([(
+            c if screenbuffer[i - 1] else f"\x1b[{i//VW+1};{i%VW+1}H{c}"
+        ) for i, c in enumerate(screenbuffer) if c])\
+    }\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
 
     print(end=res, flush=True)
-    return polygons, verts
 
 
 King.gen_mesh()

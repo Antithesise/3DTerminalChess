@@ -11,10 +11,11 @@ else:
     from tty import setraw # type: ignore
     from sys import stdin # type: ignore
 
-    def getch() -> bytes:
-        fd = stdin.fileno()
-        old_settings = tcgetattr(fd)
 
+    fd = stdin.fileno()
+    old_settings = tcgetattr(fd)
+
+    def getch() -> bytes:
         try:
             setraw(fd)
 
