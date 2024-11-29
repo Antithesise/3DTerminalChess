@@ -130,15 +130,15 @@ def main() -> None:
     WQKnight = Knight((-2.5, 0, -3.5))
     WPawns = [(Pawn((x - 3.5, 0, -2.5)), {"char": "#"}) for x in range(8)]
 
-    BKing = King((0.5, 0, 3.5))
-    BQueen = Queen((-0.5, 0, 3.5))
-    BKRook = Rook((3.5, 0, 3.5))
-    BQRook = Rook((-3.5, 0, 3.5))
-    BKBishop = Bishop((1.5, 0, 3.5))
-    BQBishop = Bishop((-1.5, 0, 3.5))
-    BKKnight = Knight((2.5, 0, 3.5))
-    BQKnight = Knight((-2.5, 0, 3.5))
-    BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": ":"}) for x in range(8)]
+    BKing = King((0.5, 0, 3.5), (0, 180, 0))
+    BQueen = Queen((-0.5, 0, 3.5), (0, 180, 0))
+    BKRook = Rook((3.5, 0, 3.5), (0, 180, 0))
+    BQRook = Rook((-3.5, 0, 3.5), (0, 180, 0))
+    BKBishop = Bishop((1.5, 0, 3.5), (0, 180, 0))
+    BQBishop = Bishop((-1.5, 0, 3.5), (0, 180, 0))
+    BKKnight = Knight((2.5, 0, 3.5), (0, 180, 0))
+    BQKnight = Knight((-2.5, 0, 3.5), (0, 180, 0))
+    BPawns = [(Pawn((x - 3.5, 0, 2.5), (0, 180, 0)), {"char": ":"}) for x in range(8)]
 
     objects = [
         (cb, {"char": "."}),
@@ -170,19 +170,27 @@ def main() -> None:
     redraw = True
     t = time()
 
+    tt = 0
+    n = 0
+
     while True:
         if redraw:
             redraw = False
 
             t = time()
             res = render(objects, camera)
-            dt = time() - t
+            dt = time() - t or FMIN
 
             if DEBUG:
+                fps = 1/dt
+                tt += fps
+                n += 1
+
                 res += (
-                    f"\n\nBody Count:\t{NOBJS:3d}"
-                    f"\nDelta Time:\t{dt*1000:3.0f} ms"
-                    f"\nExtrap FPS:\t{1/dt:6.2f}"
+                    f"\n\nBody Count: {NOBJS:3d}"
+                    f"\nDelta Time: {dt*1000:3.0f} ms"
+                    f"\nExtrap FPS: {fps:6.2f}"
+                    f"\n  Mean FPS: {tt/n:6.2f}"
                 )
 
             print(end=res, flush=True)

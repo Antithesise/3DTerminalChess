@@ -889,7 +889,7 @@ class Bishop(Piece):
 class Knight(Piece):
     @classmethod
     def gen_mesh(cls) -> None:
-        offset = 4 * MESH_DIVS
+        offset = 5 * MESH_DIVS
 
         sintab = tuple(sin(radians(t)) for t in range(0, 360, 360 // MESH_DIVS))
         points = []
@@ -898,9 +898,10 @@ class Knight(Piece):
 
         for (y, m) in [
             (-1, 0.35),     # 0 * MESH_DIVS
-            (-0.85, 0.35),  # 1 * MESH_DIVS
-            (-0.75, 0.25),  # 2 * MESH_DIVS
-            (-0.65, 0.25),  # 3 * MESH_DIVS
+            (-0.9, 0.35),  # 1 * MESH_DIVS
+            (-0.8, 0.25),  # 2 * MESH_DIVS
+            (-0.7, 0.25),  # 3 * MESH_DIVS
+            (-0.675, 0.2),  # 4 * MESH_DIVS
         ]:
             points += [(
                 m * sintab[i],
@@ -910,7 +911,31 @@ class Knight(Piece):
 
         points += [
             (0, -1, 0),     # offset
-            (0, 0.25, 0),   # offset + 1
+            (0, -0.675, 0), # offset + 1
+            (0, -0.675, 0.2), # offset + 2 front point
+            (0, -0.675, -0.2), # offset + 3 back point
+            (-0.08, -0.59, 0.36), # offset + 4 front L
+            (0.08, -0.59, 0.36), # offset + 5 front R
+            (-0.1, -0.61, -0.35), # offset + 6 back L
+            (0.1, -0.61, -0.35), # offset + 7 back R
+            (-0.22, -0.63, 0.2), # offset + 8 wing L
+            (0.22, -0.63, 0.2), # offset + 9 wing R
+            (-0.1, -0.2, 0), # offset + 10 neck L
+            ( 0.1, -0.2, 0), # offset + 11 neck R
+            (-0.15, -0.42, 0.16), # offset + 12 curve L
+            (0.15, -0.42, 0.16), # offset + 13 curve R
+            (-0.08, -0.1, -0.42), # offset + 14 shoulder L
+            (0.08, -0.1, -0.42), # offset + 15 shoulder R
+            (-0.12, 0.35, -0.05), # offset + 16 ear L
+            ( 0.12, 0.35, -0.05), # offset + 17 ear R
+            (0, 0.18, -0.18), # offset + 18 sagittal back
+            (0, 0.27, -0.05), # offset + 19 sagittal front
+            (-0.116, 0.24, -0.05), # offset + 20 brow L
+            ( 0.116, 0.24, -0.05), # offset + 21 brow R
+            (-0.116, -0.03, 0.1), # offset + 22 cheek L
+            ( 0.116, -0.03, 0.1), # offset + 23 cheek R
+            (0, -0.1, 0.35), # offset + 24 jaw
+            (0, 0.05, 0.36) # offset + 25 snout
         ]
 
         triangles += [
@@ -929,6 +954,49 @@ class Knight(Piece):
             ]
 
         triangles += [
+            (offset + 2, offset + 3, offset + 8),
+            (offset + 2, offset + 9, offset + 3),
+            (offset + 2, offset + 4, offset + 5),
+            (offset + 3, offset + 7, offset + 6),
+            (offset + 2, offset + 8, offset + 4),
+            (offset + 2, offset + 5, offset + 9),
+            (offset + 3, offset + 6, offset + 8),
+            (offset + 3, offset + 9, offset + 7),
+            (offset + 4, offset + 10, offset + 11),
+            (offset + 4, offset + 11, offset + 5),
+            (offset + 4, offset + 8, offset + 12),
+            (offset + 5, offset + 13, offset + 9),
+            (offset + 4, offset + 12, offset + 10),
+            (offset + 5, offset + 11, offset + 13),
+            (offset + 8, offset + 6, offset + 14),
+            (offset + 7, offset + 9, offset + 15),
+            (offset + 12, offset + 8, offset + 14),
+            (offset + 9, offset + 13, offset + 15),
+            (offset + 10, offset + 12, offset + 14),
+            (offset + 13, offset + 11, offset + 15),
+            (offset + 6, offset + 15, offset + 14),
+            (offset + 6, offset + 7, offset + 15),
+            (offset + 10, offset + 14, offset + 16),
+            (offset + 11, offset + 17, offset + 15),
+            (offset + 18, offset + 19, offset + 16),
+            (offset + 18, offset + 17, offset + 19),
+            (offset + 18, offset + 16, offset + 14),
+            (offset + 18, offset + 15, offset + 17),
+            (offset + 19, offset + 20, offset + 16),
+            (offset + 19, offset + 17, offset + 21),
+            (offset + 10, offset + 20, offset + 22),
+            (offset + 21, offset + 11, offset + 23),
+            (offset + 10, offset + 22, offset + 24),
+            (offset + 11, offset + 24, offset + 23),
+            (offset + 25, offset + 24, offset + 22),
+            (offset + 25, offset + 23, offset + 24),
+            (offset + 22, offset + 20, offset + 25),
+            (offset + 23, offset + 25, offset + 21),
+            (offset + 19, offset + 25, offset + 20),
+            (offset + 19, offset + 21, offset + 25),
+            (offset + 10, offset + 24, offset + 11),
+            (offset + 14, offset + 15, offset + 18)
+        ] + [
             (offset - 1 - (i + 1) % MESH_DIVS,
              offset - 1 - i,
              offset + 1) for i in range(MESH_DIVS)
