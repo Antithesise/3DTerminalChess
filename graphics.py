@@ -1,19 +1,13 @@
 from abc import ABC, abstractmethod
 from bisect import bisect_left
 from functools import lru_cache
-from math import ceil, copysign, cos, hypot, radians, sin, sqrt
+from math import copysign, cos, hypot, radians, sin, sqrt
 from os import get_terminal_size
-# from random import randint
 from sys import float_info
-from typing import Any, Collection, NamedTuple, Never, NoReturn, Self, overload
-from numpy import array, cross, dot, empty, float64, sqrt as npsqrt
+from typing import Any, Collection, Never, NoReturn, Self
+from numpy import array, cross, dot, empty, float64
 from numpy.typing import ArrayLike, NDArray
 
-
-CACHE_SIZE = 1024
-MESH_DIVS = 8 # 4 times a factor of 90
-
-LIGHTNORM = (sqrt(0.5), sqrt(0.5), 0)
 
 VW, VH = get_terminal_size()
 HVW, HVH = VW >> 1, VH >> 1
@@ -22,7 +16,12 @@ CRATIO = 1 / 2.32
 
 FMIN = (5e-324 or float_info.min) # smallest floating point value
 
-EMPTYBUFFER = [""] * (VH * VW)
+EMPTYBUFFER = [" "] * (VH * VW)
+
+CACHE_SIZE = 1024
+MESH_DIVS = 8 # has to be 4 times a factor of 90
+
+LIGHTNORM = (sqrt(0.5), sqrt(0.5), 0)
 
 GRADCHARS = {
     -4: "|",
@@ -39,31 +38,7 @@ GRADCHARS = {
 }
 GRADS = [-4, -2, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2, 4]
 
-
 Vec3 = tuple[float, float, float] | ArrayLike
-
-class Vec2[T: (float, int)](NamedTuple):
-    x: T
-    y: T
-
-    def __add__(self, o: "Vec2[T] | tuple[T, T]") -> "Vec2[T]":
-        return Vec2(self.x + o[0], self.y + o[1])
-
-    def __sub__(self, o: "Vec2[T] | tuple[T, T]") -> "Vec2[T]":
-        return Vec2(self.x - o[0], self.y - o[1])
-
-    def __mul__(self, s: T) -> "Vec2[T]":
-        return Vec2(self.x * s, self.y * s)
-
-    def __div__(self, s: T) -> "Vec2[T]":
-        return Vec2(self.x / s, self.y / s)
-
-    def __round__(self) -> "Vec2[int]":
-        return Vec2(int(self.x + 0.5), int(self.y + 0.5))
-
-    def __eq__(self, o: "Vec2[T] | tuple[T, T]") -> bool:
-        return self.x == o[0] and self.y == o[1]
-
 
 screenbuffer = EMPTYBUFFER[:]
 zbuffer: dict[int, float] = {}
@@ -114,19 +89,19 @@ def rotmat(rx: float, ry: float, rz: float) -> NDArray:
     ])
 
 @lru_cache(CACHE_SIZE)
-def transform(x: float, y: float) -> Vec2[float]:
-    return Vec2(HVW + x * SCALE, HVH - y * SCALE * CRATIO)
+def transform(x: float, y: float) -> tuple[float, float]:
+    return HVW + x * SCALE, HVH - y * SCALE * CRATIO
 
-def xyclip(p1: Vec2, p2: Vec2) -> tuple[Vec2, Vec2] | None:
+def xyclip(x1: float, y1: float, x2: float, y2: float) -> tuple[int, int, int, int] | None:
     """
     liang-barsky for the win
     """
 
-    dx, dy = p2 - p1
-    x, y = p1
+    dx = x2 - x1
+    dy = y2 - y1
 
     p = (-dx, dx, -dy, dy)
-    q = (x - 1, VW - x, y - 1, VH - y)
+    q = (x1 - 1, VW - x1, y1 - 1, VH - y1)
     start = 0
     stop = 1
 
@@ -140,19 +115,21 @@ def xyclip(p1: Vec2, p2: Vec2) -> tuple[Vec2, Vec2] | None:
             else:
                 stop = min(q[i] / p[i], stop)
 
-    if start > stop:
+    if stop < start:
         return
 
-    return p1 + (start * dx, start * dy), \
-           p1 + (stop * dx, stop * dy)
+    x2 = x1 + stop * dx
+    y2 = y1 + stop * dy
+    x1 = x1 + start * dx
+    y1 = y1 + start * dy
 
-def write(x: int | float, y: int | float, z: float, char: str, overdraw: bool=False) -> None:
-    x, y = int(x + 0.5), int(y + 0.5)
+    return int(x1 + 0.5), int(y1 + 0.5), int(x2 + 0.5), int(y2 + 0.5)
 
+def write(x: int, y: int, z: float, char: str, overdraw: bool=False) -> None:
     if 0 < x < VW and 0 < y < VH:
         i = (y - 1) * VW + x - 1
 
-        if overdraw or zbuffer.setdefault(i, z) >= z:
+        if overdraw or z <= zbuffer.setdefault(i, z):
             screenbuffer[i] = char
             zbuffer[i] = z
 
@@ -202,11 +179,11 @@ class AbstractObject(ABC):
         return rotmat(self.rx, self.ry, self.rz)
 
     @abstractmethod
-    def project(self, obj: "AbstractObject") -> tuple[tuple[Vec2, ...], tuple[float, ...]]: ...
+    def project(self, obj: "AbstractObject") -> tuple[tuple[float | tuple[float, float], ...], tuple[float, ...]] | tuple[tuple[float | tuple[float, float], ...], tuple[float, ...], tuple[float, ...]]: ...
 
     @classmethod
     @abstractmethod
-    def render(cls, proj: tuple[Vec2, ...], z: tuple[float, ...], *args, **kwargs) -> None: ...
+    def render(cls, proj: tuple[float | tuple[float, float], ...], z: tuple[float, ...], *args, **kwargs) -> None: ...
 
 
 class Camera(AbstractObject):
@@ -239,7 +216,7 @@ class Camera(AbstractObject):
         self.foclen = foclen
 
     @lru_cache(CACHE_SIZE)
-    def __project(self, pos: tuple[float, float, float], fl: float) -> tuple[tuple[Vec2], tuple[float]]:
+    def __project(self, pos: tuple[float, float, float], fl: float) -> tuple[tuple[float, float], float]:
         dx, dy, dz = (self.rotmat @ (array(pos) + [0, 0, fl]))
 
         if dz == 0: dz = FMIN
@@ -247,12 +224,12 @@ class Camera(AbstractObject):
         bx = dx / abs(dz)
         by = dy / abs(dz)
 
-        return (transform(bx, by),), (dz,)
+        return transform(bx, by), dz
 
-    def project(self, pos: Vec3) -> tuple[tuple[Vec2], tuple[float]]:
+    def project(self, pos: Vec3) -> tuple[tuple[float, float], float]:
         res, clip = self.__project(tuple(pos - self.pos), self.foclen)
 
-        return (Vec2(*res[0]),), clip # deepcopy to prevent side effects
+        return res, clip
 
     @classmethod
     def render(cls, proj: Never, z: Never) -> NoReturn:
@@ -266,16 +243,15 @@ class Point(AbstractObject):
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...]]:
+    def project(self, camera: Camera) -> tuple[tuple[float, float], float]:
         return camera.project(self.pos)
 
     @classmethod
-    def render(cls, proj: tuple[Vec2], z: tuple[float], char: str="#") -> None:
-        for p, c in zip(proj, z):
-            if c <= 0:
-                continue
+    def render(cls, proj: tuple[float, float], z: float, char: str="#") -> None:
+        if 0 < z:
+            x, y = proj
 
-            write(*p, c, char)
+            write(int(x + 0.5), int(y + 0.5), z, char)
 
 class Line(AbstractObject):
     p1: tuple[float, float, float]
@@ -296,7 +272,7 @@ class Line(AbstractObject):
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, Vec2], tuple[float, float]]:
+    def project(self, camera: Camera) -> tuple[tuple[float, float, float, float], tuple[float, float]]:
         if self.worldloc:
             r1, c1 = camera.project(self.p1)
             r2, c2 = camera.project(self.p2)
@@ -308,11 +284,11 @@ class Line(AbstractObject):
             r1, c1 = camera.project(pos + (rm @ self.p1))
             r2, c2 = camera.project(pos + (rm @ self.p2))
 
-        return r1 + r2, c1 + c2
+        return r1 + r2, (c1, c2)
 
     @classmethod
     def render(cls,
-               proj: tuple[Vec2, Vec2],
+               proj: tuple[float, float, float, float],
                z: tuple[float, float],
                *,
                char: str="",
@@ -328,19 +304,18 @@ class Line(AbstractObject):
         if clipped is None:
             return
 
-        p1, p2 = (round(p) for p in clipped)
+        x1, y1, x2, y2 = clipped
 
-        if  p1.x < 1 > p2.x or p1.x > VW - 1 < p2.x or \
-            p1.y < 1 > p2.y or p1.y > VH - 1 < p2.y:
+        if  x1 < 1 > x2 or x1 > VW - 1 < x2 or \
+            y1 < 1 > y2 or y1 > VH - 1 < y2:
             return
 
         c = max(z)
 
-        dx, dy = p2 - p1
+        dx = x2 - x1
+        dy = y2 - y1
         sx = int(copysign(1, dx))
         sy = int(copysign(1, dy))
-        x1, y1 = p1
-        x2, y2 = p2
 
         char = char or gradmap(-dy / (dx or FMIN))
 
@@ -369,13 +344,13 @@ class Line(AbstractObject):
 
             write(x1, y1, c, char, overdraw)
 
-            if sx > 0 and sy > 0:
+            if 0 < sx and 0 < sy:
                 x2 = min(VW, x2)
                 y2 = min(VH, y2)
                 while True:
                     e2 = 2 * error
 
-                    if e2 >= dy:
+                    if dy <= e2:
                         error += dy
                         x1 += sx
 
@@ -383,17 +358,17 @@ class Line(AbstractObject):
                         error += dx
                         y1 += sy
 
-                    if x1 > x2 or y1 > y2:
+                    if x2 < x1 or y2 < y1:
                         break
 
                     write(x1, y1, c, char, overdraw)
-            elif sx > 0:
+            elif 0 < sx:
                 x2 = min(VW, x2)
                 y2 = max(1, y2)
                 while True:
                     e2 = 2 * error
 
-                    if e2 >= dy:
+                    if dy <= e2:
                         error += dy
                         x1 += sx
 
@@ -401,17 +376,17 @@ class Line(AbstractObject):
                         error += dx
                         y1 += sy
 
-                    if x1 > x2 or y1 < y2:
+                    if x2 < x1 or y1 < y2:
                         break
 
                     write(x1, y1, c, char, overdraw)
-            elif sy > 0:
+            elif 0 < sy:
                 x2 = max(1, x2)
                 y2 = min(VH, y2)
                 while True:
                     e2 = 2 * error
 
-                    if e2 >= dy:
+                    if dy <= e2:
                         error += dy
                         x1 += sx
 
@@ -419,7 +394,7 @@ class Line(AbstractObject):
                         error += dx
                         y1 += sy
 
-                    if x1 < x2 or y1 > y2:
+                    if x1 < x2 or y2 < y1:
                         break
 
                     write(x1, y1, c, char, overdraw)
@@ -429,7 +404,7 @@ class Line(AbstractObject):
                 while True:
                     e2 = 2 * error
 
-                    if e2 >= dy:
+                    if dy <= e2:
                         error += dy
                         x1 += sx
 
@@ -463,7 +438,7 @@ class Triangle(AbstractObject):
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, Vec2, Vec2], tuple[float, float, float]]:
+    def project(self, camera: Camera) -> tuple[tuple[float, float, float, float, float, float], tuple[float, float, float]]:
         if self.worldloc:
             r1, c1 = camera.project(self.p1)
             r2, c2 = camera.project(self.p2)
@@ -477,11 +452,11 @@ class Triangle(AbstractObject):
             r2, c2 = camera.project(pos + (rm @ self.p2))
             r3, c3 = camera.project(pos + (rm @ self.p3))
 
-        return r1 + r2 + r3, c1 + c2 + c3
+        return r1 + r2 + r3, (c1, c2, c3)
 
     @classmethod
     def render(cls,
-               proj: tuple[Vec2, Vec2, Vec2],
+               proj: tuple[float, float, float, float, float, float],
                z: tuple[float, float, float],
                shading: float=-1,
                *,
@@ -491,7 +466,7 @@ class Triangle(AbstractObject):
         https://web.archive.org/web/20050408192410/http://sw-shader.sourceforge.net/rasterizer.html
         """
 
-        (x1, y1), (x2, y2), (x3, y3) = proj # hope proj is correct length
+        x1, y1, x2, y2, x3, y3 = proj # hope proj is correct length
 
         # backface culling
         if x2*y1 + x3*y2 + x1*y3 < x1*y2 + x2*y3 + x3*y1:
@@ -500,12 +475,12 @@ class Triangle(AbstractObject):
             # (x2, y2), (x1, y1), (x3, y3) = proj # reverse winding
 
         # viewport culling
-        elif  (z[0] <= 0 and z[1] <= 0 and z[2] <= 0) or\
-            (x1 < 1 and x2 < 1 and x3 < 1) or (x1 > VW and x2 > VW and x3 > VW) or\
-            (y1 < 1 and y2 < 1 and y3 < 1) or (y1 > VH and y2 > VH and y3 > VH):
+        elif (z[0] < 0 and z[1] < 0 and z[2] < 0) or\
+            (x1 < 1 and x2 < 1 and x3 < 1) or (VW < x1 and VW < x2 and VW < x3) or\
+            (y1 < 1 and y2 < 1 and y3 < 1) or (VH < y1 and VH < y2 and VH < y3):
                 return
 
-        elif shading >= 0:
+        elif 0 <= shading:
             char = f"\x1b[38;5;{int(255.5 - 23 * sqrt(shading**3))}m{char}\x1b[0m"
 
         c = max(z)
@@ -519,17 +494,17 @@ class Triangle(AbstractObject):
         dy31 = y3 - y1
 
         minx = int(min(x1, x2, x3, VW))
-        maxx = int(max(x1, x2, x3, 0) + 0.999999)
+        maxx = int(max(x1, x2, x3, 0) + 0.999999) # not the most accurate
         miny = int(min(y1, y2, y3, VH))
-        maxy = int(max(y1, y2, y3, 0) + 0.999999)
+        maxy = int(max(y1, y2, y3, 0) + 0.999999) # not the most accurate
 
         c1 = dy12 * x1 - dx12 * y1
         c2 = dy23 * x2 - dx23 * y2
         c3 = dy31 * x3 - dx31 * y3
 
-        c1 = c1 + (dy12 < 0 or (dy12 == 0 and dx12 > 0))
-        c2 = c2 + (dy23 < 0 or (dy23 == 0 and dx23 > 0))
-        c3 = c3 + (dy31 < 0 or (dy31 == 0 and dx31 > 0))
+        c1 = c1 + (dy12 < 0 or (dy12 == 0 and 0 < dx12))
+        c2 = c2 + (dy23 < 0 or (dy23 == 0 and 0 < dx23))
+        c3 = c3 + (dy31 < 0 or (dy31 == 0 and 0 < dx31))
 
         cy1 = c1 + dx12 * miny - dy12 * minx
         cy2 = c2 + dx23 * miny - dy23 * minx
@@ -541,7 +516,7 @@ class Triangle(AbstractObject):
             cx3 = cy3
 
             for x in range(minx, maxx):
-                if cx1 >= 0 and cx2 >= 0 and cx3 >= 0:
+                if 0 <= cx1 and 0 <= cx2 and 0 <= cx3:
                     write(x, y, c, char)
 
                 cx1 = cx1 - dy12
@@ -586,15 +561,15 @@ class Mesh(AbstractObject):
             tuple(points[k])
         ), LIGHTNORM) / 2
 
-    def project(self, camera: Camera) -> tuple[tuple[Vec2, ...], tuple[float, ...], tuple[float, ...]]:
+    def project(self, camera: Camera) -> tuple[tuple[tuple[float, float], ...], tuple[float, ...], tuple[float, ...]]:
         res = []
         clip = []
 
         if self.worldloc:
             for p in self.points:
                 r, c = camera.project(p)
-                res.extend(r)
-                clip.extend(c)
+                res.append(r)
+                clip.append(c)
 
         else:
             rm = self.rotmat
@@ -602,15 +577,15 @@ class Mesh(AbstractObject):
 
             for p in self.points:
                 r, c = camera.project(pos + (rm @ p))
-                res.extend(r)
-                clip.extend(c)
+                res.append(r)
+                clip.append(c)
 
         shading = tuple(map(self._shade, self.triangles))
 
         return tuple(res), tuple(clip), shading
 
     def render(self,
-               proj: tuple[Vec2, ...],
+               proj: tuple[tuple[float, float], ...],
                z: tuple[float, ...],
                shading: tuple[float, ...],
                *,
@@ -618,7 +593,7 @@ class Mesh(AbstractObject):
 
         for i, (j, k, l) in enumerate(self.triangles):
             Triangle.render(
-                (proj[j], proj[k], proj[l]),
+                proj[j] + proj[k] + proj[l],
                 (z[j], z[k], z[l]),
                 shading[i],
                 char=char
@@ -627,7 +602,7 @@ class Mesh(AbstractObject):
         for p in self.lines:
             for i in range(len(p) - 1):
                 Line.render(
-                    (proj[p[i]], proj[p[i+1]]),
+                    proj[p[i]] + proj[p[i+1]],
                     (z[p[i]], z[p[i+1]]),
                     char=char
                 )
@@ -647,14 +622,14 @@ class Piece(Mesh):
 
     @classmethod
     def render(cls,
-               proj: tuple[Vec2, ...],
+               proj: tuple[tuple[float, float], ...],
                z: tuple[float, ...],
                shading: tuple[float, ...],
                *,
                char: str="") -> None:
         for i, (j, k, l) in enumerate(cls.triangles):
             Triangle.render(
-                (proj[j], proj[k], proj[l]),
+                proj[j] + proj[k] +  proj[l],
                 (z[j], z[k], z[l]),
                 shading[i],
                 char=char
@@ -662,7 +637,7 @@ class Piece(Mesh):
 
         for i, j in cls.lines:
             Line.render(
-                (proj[i], proj[j]),
+                proj[i] + proj[j],
                 (z[i], z[j]),
                 char=char
             )
@@ -689,8 +664,8 @@ class King(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (0.1, 0.1),     # 7 * MESH_DIVS
-            (0.2, 0.2),     # 8 * MESH_DIVS
+            (0.2, 0.1),     # 7 * MESH_DIVS
+            (0.25, 0.2),    # 8 * MESH_DIVS
             (0.3, 0.1),     # 9 * MESH_DIVS
             (0.55, 0.2),    # 10 * MESH_DIVS
         ]:
@@ -756,8 +731,8 @@ class Queen(Piece):
             (-0.5, 0.2),    # 4 * MESH_DIVS
             (-0.4, 0.15),   # 5 * MESH_DIVS
             (-0.3, 0.125),  # 6 * MESH_DIVS
-            (0.1, 0.1),     # 7 * MESH_DIVS
-            (0.2, 0.2),     # 8 * MESH_DIVS
+            (0.2, 0.1),     # 7 * MESH_DIVS
+            (0.25, 0.2),    # 8 * MESH_DIVS
             (0.3, 0.1),     # 9 * MESH_DIVS
             (0.6, 0.2),     # 10 * MESH_DIVS
         ]:
@@ -1026,22 +1001,17 @@ class Pawn(Piece):
         cls.lines = lines
 
 
-def render(objs: Collection[tuple[AbstractObject, dict[str, Any]]], camera: Camera) -> None:
-    screenbuffer[:] = EMPTYBUFFER # fastest
-    zbuffer.clear() # fastest
+def render(objs: Collection[tuple[AbstractObject, dict[str, Any]]], camera: Camera) -> str:
+    screenbuffer[:] = EMPTYBUFFER
+    zbuffer.clear()
 
     for o, kw in objs:
         p = o.project(camera)
-        o.render(*p, **kw)
+        o.render(*p, **kw) # type: ignore
 
+    out = "".join(screenbuffer)
 
-    res = f"\x1b[2J\x1b[H{\
-        "".join([(
-            c if screenbuffer[i - 1] else f"\x1b[{i//VW+1};{i%VW+1}H{c}"
-        ) for i, c in enumerate(screenbuffer) if c])\
-    }\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
-
-    print(end=res, flush=True)
+    return f"\x1b[H{out}\x1b[H3D Terminal Chess\n\nWASD + QE\tmove\n ← ↑ ↓ → \trotate\nspace/tab\tup/down"
 
 
 King.gen_mesh()

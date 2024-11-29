@@ -191,17 +191,17 @@ def main() -> None:
             redraw = False
 
             t = time()
-            render(objects, camera)
+            res = render(objects, camera)
             dt = time() - t
 
             if DEBUG:
-                print(
-                    f"\n\nBody Count: {NOBJS:10d}",
-                    f"Delta Time: {dt:10.4f}s",
-                    f"Extrap FPS: {1/dt:10.2f}",
-                    sep="\n",
-                    flush=True
+                res += (
+                    f"\n\nBody Count: {NOBJS:10d}"
+                    f"\nDelta Time: {dt:10.4f}s"
+                    f"\nExtrap FPS: {1/dt:10.2f}"
                 )
+
+            print(end=res, flush=True)
 
         while not kbhit():
             sleep(0.0001)
