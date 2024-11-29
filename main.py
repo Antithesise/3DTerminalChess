@@ -4,9 +4,6 @@ from input import getch, isansitty, kbhit
 from graphics import *
 
 
-DEBUG = True
-
-
 def handlein(camera: Camera) -> bool:
     redraw = False
     key = ord(getch())
@@ -109,13 +106,13 @@ def main() -> None:
 
     # xgrid = [(Line((x, -1, -4), (x, -1, 4)), {"overdraw": True}) for x in range(-3, 4)]
     # zgrid = [(Line((-4, -1, z), (4, -1, z)), {"overdraw": True}) for z in range(-3, 4)]
-    bpoints = [
-        (-4, -1, -4),
-        (-4, -1, 4),
-        (4, -1, 4),
-        (4, -1, -4)
-    ]
-    border = [(Line(bpoints[i], bpoints[(i+1) % 4]), {"overdraw": True}) for i in range(4)]
+    # bpoints = [
+    #     (-4, -1, -4),
+    #     (-4, -1, 4),
+    #     (4, -1, 4),
+    #     (4, -1, -4)
+    # ]
+    # border = [(Line(bpoints[i], bpoints[(i+1) % 4]), {"overdraw": True}) for i in range(4)]
 
     cbpoints = tuple((x, -1, z) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
     cbtris = tuple((i, i + 10, i + 9) for i in range(0, 70, 2) if i % 18 < 16) +\
@@ -123,44 +120,31 @@ def main() -> None:
 
     cb = Mesh(cbpoints, cbtris, ())
 
-
-    # for i in range(0, 70, 2):
-    #     if i % 18 >= 16:
-    #         continue
-
-    #     p1 = cbpoints[i]
-    #     p2 = cbpoints[i + 10]
-    #     p3 = cbpoints[i + 9]
-    #     p4 = cbpoints[i + 1]
-
-    #     cb.append((Triangle(p1, p2, p3), {"char": ":"}))
-    #     cb.append((Triangle(p1, p4, p2), {"char": ":"}))
-
     WKing = King((0.5, 0, -3.5))
     WQueen = Queen((-0.5, 0, -3.5))
-    WKRook = Rook((-3.5, 0, -3.5))
-    WQRook = Rook((3.5, 0, -3.5))
-    WKBishop = Bishop((-1.5, 0, -3.5))
-    WQBishop = Bishop((1.5, 0, -3.5))
-    WKKnight = Knight((-2.5, 0, -3.5))
-    WQKnight = Knight((2.5, 0, -3.5))
+    WKRook = Rook((3.5, 0, -3.5))
+    WQRook = Rook((-3.5, 0, -3.5))
+    WKBishop = Bishop((1.5, 0, -3.5))
+    WQBishop = Bishop((-1.5, 0, -3.5))
+    WKKnight = Knight((2.5, 0, -3.5))
+    WQKnight = Knight((-2.5, 0, -3.5))
     WPawns = [(Pawn((x - 3.5, 0, -2.5)), {"char": "#"}) for x in range(8)]
 
     BKing = King((0.5, 0, 3.5))
     BQueen = Queen((-0.5, 0, 3.5))
-    BKRook = Rook((-3.5, 0, 3.5))
-    BQRook = Rook((3.5, 0, 3.5))
-    BKBishop = Bishop((-1.5, 0, 3.5))
-    BQBishop = Bishop((1.5, 0, 3.5))
-    BKKnight = Knight((-2.5, 0, 3.5))
-    BQKnight = Knight((2.5, 0, 3.5))
-    BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": "'"}) for x in range(8)]
+    BKRook = Rook((3.5, 0, 3.5))
+    BQRook = Rook((-3.5, 0, 3.5))
+    BKBishop = Bishop((1.5, 0, 3.5))
+    BQBishop = Bishop((-1.5, 0, 3.5))
+    BKKnight = Knight((2.5, 0, 3.5))
+    BQKnight = Knight((-2.5, 0, 3.5))
+    BPawns = [(Pawn((x - 3.5, 0, 2.5)), {"char": ":"}) for x in range(8)]
 
     objects = [
-        (cb, {"char": ":"}),
+        (cb, {"char": "."}),
         # *xgrid,
         # *zgrid,
-        *border,
+        # *border,
         (WKing, {"char": "#"}),
         (WQueen, {"char": "#"}),
         (WKRook, {"char": "#"}),
@@ -170,14 +154,14 @@ def main() -> None:
         (WKKnight, {"char": "#"}),
         (WQKnight, {"char": "#"}),
         *WPawns,
-        (BKing, {"char": "'"}),
-        (BQueen, {"char": "'"}),
-        (BKRook, {"char": "'"}),
-        (BQRook, {"char": "'"}),
-        (BKBishop, {"char": "'"}),
-        (BQBishop, {"char": "'"}),
-        (BKKnight, {"char": "'"}),
-        (BQKnight, {"char": "'"}),
+        (BKing, {"char": ":"}),
+        (BQueen, {"char": ":"}),
+        (BKRook, {"char": ":"}),
+        (BQRook, {"char": ":"}),
+        (BKBishop, {"char": ":"}),
+        (BQBishop, {"char": ":"}),
+        (BKKnight, {"char": ":"}),
+        (BQKnight, {"char": ":"}),
         *BPawns,
     ]
 
@@ -196,9 +180,9 @@ def main() -> None:
 
             if DEBUG:
                 res += (
-                    f"\n\nBody Count: {NOBJS:10d}"
-                    f"\nDelta Time: {dt:10.4f}s"
-                    f"\nExtrap FPS: {1/dt:10.2f}"
+                    f"\n\nBody Count:\t{NOBJS:3d}"
+                    f"\nDelta Time:\t{dt*1000:3.0f} ms"
+                    f"\nExtrap FPS:\t{1/dt:6.2f}"
                 )
 
             print(end=res, flush=True)

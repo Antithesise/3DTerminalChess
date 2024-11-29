@@ -8,21 +8,17 @@ from typing import Any, Collection, Never, NoReturn, Self
 from numpy import array, cross, dot, empty, float64
 from numpy.typing import ArrayLike, NDArray
 
+from config import *
 
-VW, VH = get_terminal_size()
-HVW, HVH = VW >> 1, VH >> 1
-SCALE = 200
-CRATIO = 1 / 2.32
 
 FMIN = (5e-324 or float_info.min) # smallest floating point value
 
+VW, VH = get_terminal_size()
+HVW, HVH = VW >> 1, VH >> 1
+
 EMPTYBUFFER = [" "] * (VH * VW)
 
-CACHE_SIZE = 1024
-MESH_DIVS = 8 # has to be 4 times a factor of 90
-
-LIGHTNORM = (sqrt(0.5), sqrt(0.5), 0)
-
+GRADS = [-4, -2, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2, 4]
 GRADCHARS = {
     -4: "|",
     -2: "\\",
@@ -36,13 +32,13 @@ GRADCHARS = {
     2: "/",
     4: "|"
 }
-GRADS = [-4, -2, -1, -0.5, -0.2, 0, 0.2, 0.5, 1, 2, 4]
 
 Vec3 = tuple[float, float, float] | ArrayLike
 
 screenbuffer = EMPTYBUFFER[:]
 zbuffer: dict[int, float] = {}
 
+zbupdate = zbuffer.setdefault
 
 @lru_cache(CACHE_SIZE)
 def gradmap(grad: float):
@@ -60,19 +56,31 @@ def gradmap(grad: float):
         return GRADCHARS[before]
 
 @lru_cache(CACHE_SIZE)
-def normal(p1: tuple[float, float, float],
-           p2: tuple[float, float, float],
-           p3: tuple[float, float, float]) -> NDArray:
+def shade(p1: tuple[float, float, float],
+          p2: tuple[float, float, float],
+          p3: tuple[float, float, float]) -> float:
     p = array(p1, float64)
     N = cross(p2 - p, p3 - p)
 
-    return N / hypot(*N)
+    return 0.5 + dot(N / hypot(*N), LIGHTNORM) / 2
 
 @lru_cache(CACHE_SIZE)
 def rotmat(rx: float, ry: float, rz: float) -> NDArray:
     r = radians(rx), radians(ry), radians(rz)
     sx, sy, sz = map(sin, r)
     cx, cy, cz = map(cos, r)
+
+    # x = radians(rx)
+    # y = radians(ry)
+    # z = radians(rz)
+
+    # sx = sin(x)
+    # sy = sin(y)
+    # sz = sin(z)
+
+    # cx = cos(x)
+    # cy = cos(y)
+    # cz = cos(z)
 
     return array([
         [ 1,  0,  0 ],
@@ -87,10 +95,6 @@ def rotmat(rx: float, ry: float, rz: float) -> NDArray:
         [-sz, cz, 0 ],
         [ 0,  0,  1 ]
     ])
-
-@lru_cache(CACHE_SIZE)
-def transform(x: float, y: float) -> tuple[float, float]:
-    return HVW + x * SCALE, HVH - y * SCALE * CRATIO
 
 def xyclip(x1: float, y1: float, x2: float, y2: float) -> tuple[int, int, int, int] | None:
     """
@@ -125,13 +129,13 @@ def xyclip(x1: float, y1: float, x2: float, y2: float) -> tuple[int, int, int, i
 
     return int(x1 + 0.5), int(y1 + 0.5), int(x2 + 0.5), int(y2 + 0.5)
 
-def write(x: int, y: int, z: float, char: str, overdraw: bool=False) -> None:
+def write(x: int, y: int, depth: float, char: str, overdraw: bool=False) -> None:
     if 0 < x < VW and 0 < y < VH:
         i = (y - 1) * VW + x - 1
 
-        if overdraw or z <= zbuffer.setdefault(i, z):
+        if overdraw or depth <= zbupdate(i, depth):
             screenbuffer[i] = char
-            zbuffer[i] = z
+            zbuffer[i] = depth
 
 
 class AbstractObject(ABC):
@@ -146,29 +150,29 @@ class AbstractObject(ABC):
 
         return obj
 
-    @property
-    def x(self) -> float:
-        return self.pos[0]
+    # @property
+    # def x(self) -> float:
+    #     return self.pos[0]
 
-    @property
-    def y(self) -> float:
-        return self.pos[1]
+    # @property
+    # def y(self) -> float:
+    #     return self.pos[1]
 
-    @property
-    def z(self) -> float:
-        return self.pos[2]
+    # @property
+    # def z(self) -> float:
+    #     return self.pos[2]
 
-    @property
-    def rx(self) -> float:
-        return self.rot[0]
+    # @property
+    # def rx(self) -> float:
+    #     return self.rot[0]
 
-    @property
-    def ry(self) -> float:
-        return self.rot[1]
+    # @property
+    # def ry(self) -> float:
+    #     return self.rot[1]
 
-    @property
-    def rz(self) -> float:
-        return self.rot[2]
+    # @property
+    # def rz(self) -> float:
+    #     return self.rot[2]
 
     @property
     def rotmat(self) -> NDArray:
@@ -176,63 +180,56 @@ class AbstractObject(ABC):
         Useful for transforming/aligning children
         """
 
-        return rotmat(self.rx, self.ry, self.rz)
+        return rotmat(self.rot[0], self.rot[1], self.rot[2])
 
     @abstractmethod
     def project(self, obj: "AbstractObject") -> tuple[tuple[float | tuple[float, float], ...], tuple[float, ...]] | tuple[tuple[float | tuple[float, float], ...], tuple[float, ...], tuple[float, ...]]: ...
 
     @classmethod
     @abstractmethod
-    def render(cls, proj: tuple[float | tuple[float, float], ...], z: tuple[float, ...], *args, **kwargs) -> None: ...
+    def render(cls, proj: tuple[float | tuple[float, float], ...], depth: tuple[float, ...], *args, **kwargs) -> None: ...
 
 
 class Camera(AbstractObject):
-    foclen: float
-
     @lru_cache(CACHE_SIZE)
     def __yrotmat(self, ry: float) -> NDArray:
-        return array([
-            [cos(radians(ry)), 0, -sin(radians(ry))],
-            [0, 1, 0 ],
-            [sin(radians(ry)), 0, cos(radians(ry))]
-        ])
+        a = radians(ry)
+        s = sin(a)
+        c = cos(a)
+
+        return array((
+            (c, 0,-s),
+            (0, 1, 0),
+            (s, 0, c)
+        ))
 
     @property
     def yrotmat(self) -> NDArray:
-        return self.__yrotmat(self.ry)
-
-    def __new__(cls, *args, **kwards) -> Self:
-        obj = super().__new__(cls)
-
-        return obj
+        return self.__yrotmat(self.rot[1])
 
     def __init__(self,
                  pos: Vec3=(0,0,0),
-                 rot: Vec3=(0,0,0),
-                 foclen: float=0.1) -> None:
+                 rot: Vec3=(0,0,0)) -> None:
 
         self.pos = array(pos, float64)
         self.rot = array(rot, float64)
-        self.foclen = foclen
 
-    @lru_cache(CACHE_SIZE)
-    def __project(self, pos: tuple[float, float, float], fl: float) -> tuple[tuple[float, float], float]:
-        dx, dy, dz = (self.rotmat @ (array(pos) + [0, 0, fl]))
+    def __project(self, pos: tuple[float, float, float]) -> tuple[tuple[float, float], float]:
+        dx, dy, dz = self.rotmat @ pos
 
-        if dz == 0: dz = FMIN
+        if not dz: dz = FMIN
 
-        bx = dx / abs(dz)
-        by = dy / abs(dz)
+        scaling = SCALE / abs(dz)
 
-        return transform(bx, by), dz
+        return (HVW + dx * scaling, HVH - dy * scaling * CRATIO), dz
 
     def project(self, pos: Vec3) -> tuple[tuple[float, float], float]:
-        res, clip = self.__project(tuple(pos - self.pos), self.foclen)
+        res, z = self.__project(tuple(pos - self.pos))
 
-        return res, clip
+        return res, z
 
     @classmethod
-    def render(cls, proj: Never, z: Never) -> NoReturn:
+    def render(cls, proj: Never, depth: Never) -> NoReturn:
         raise NotImplementedError("No Escherian shenanigans here please.")
 
 class Point(AbstractObject):
@@ -247,11 +244,11 @@ class Point(AbstractObject):
         return camera.project(self.pos)
 
     @classmethod
-    def render(cls, proj: tuple[float, float], z: float, char: str="#") -> None:
-        if 0 < z:
+    def render(cls, proj: tuple[float, float], depth: float, char: str="#") -> None:
+        if 0 < depth:
             x, y = proj
 
-            write(int(x + 0.5), int(y + 0.5), z, char)
+            write(int(x + 0.5), int(y + 0.5), depth, char)
 
 class Line(AbstractObject):
     p1: tuple[float, float, float]
@@ -289,7 +286,7 @@ class Line(AbstractObject):
     @classmethod
     def render(cls,
                proj: tuple[float, float, float, float],
-               z: tuple[float, float],
+               depth: tuple[float, float],
                *,
                char: str="",
                overdraw: bool=False) -> None:
@@ -297,7 +294,7 @@ class Line(AbstractObject):
         Good old Bresenham
         """
 
-        if z[0] <= 0 and z[1] <= 0:
+        if depth[0] <= 0 and depth[1] <= 0:
             return
 
         clipped = xyclip(*proj) # hope proj is correct length
@@ -310,7 +307,7 @@ class Line(AbstractObject):
             y1 < 1 > y2 or y1 > VH - 1 < y2:
             return
 
-        c = max(z)
+        z = max(depth)
 
         dx = x2 - x1
         dy = y2 - y1
@@ -324,7 +321,7 @@ class Line(AbstractObject):
             dy = min(max(y1, y2), VH) + 1 - y
 
             for y in range(y, y + dy):
-                write(x1, y, c, char, overdraw)
+                write(x1, y, z, char, overdraw)
 
             return
 
@@ -333,7 +330,7 @@ class Line(AbstractObject):
             dx = min(max(x1, x2), VW) + 1 - x
 
             for x in range(x, x + dx):
-                write(x, y1, c, char, overdraw)
+                write(x, y1, z, char, overdraw)
 
             return
 
@@ -342,7 +339,7 @@ class Line(AbstractObject):
             dy = -abs(dy)
             error = dx + dy
 
-            write(x1, y1, c, char, overdraw)
+            write(x1, y1, z, char, overdraw)
 
             if 0 < sx and 0 < sy:
                 x2 = min(VW, x2)
@@ -361,7 +358,7 @@ class Line(AbstractObject):
                     if x2 < x1 or y2 < y1:
                         break
 
-                    write(x1, y1, c, char, overdraw)
+                    write(x1, y1, z, char, overdraw)
             elif 0 < sx:
                 x2 = min(VW, x2)
                 y2 = max(1, y2)
@@ -379,7 +376,7 @@ class Line(AbstractObject):
                     if x2 < x1 or y1 < y2:
                         break
 
-                    write(x1, y1, c, char, overdraw)
+                    write(x1, y1, z, char, overdraw)
             elif 0 < sy:
                 x2 = max(1, x2)
                 y2 = min(VH, y2)
@@ -397,7 +394,7 @@ class Line(AbstractObject):
                     if x1 < x2 or y2 < y1:
                         break
 
-                    write(x1, y1, c, char, overdraw)
+                    write(x1, y1, z, char, overdraw)
             else:
                 x2 = max(1, x2)
                 y2 = max(1, y2)
@@ -415,7 +412,7 @@ class Line(AbstractObject):
                     if x1 < x2 or y1 < y2:
                         break
 
-                    write(x1, y1, c, char, overdraw)
+                    write(x1, y1, z, char, overdraw)
 
 
 class Triangle(AbstractObject):
@@ -457,7 +454,7 @@ class Triangle(AbstractObject):
     @classmethod
     def render(cls,
                proj: tuple[float, float, float, float, float, float],
-               z: tuple[float, float, float],
+               depth: tuple[float, float, float],
                shading: float=-1,
                *,
                char: str="#") -> None:
@@ -475,7 +472,7 @@ class Triangle(AbstractObject):
             # (x2, y2), (x1, y1), (x3, y3) = proj # reverse winding
 
         # viewport culling
-        elif (z[0] < 0 and z[1] < 0 and z[2] < 0) or\
+        elif (depth[0] < 0 and depth[1] < 0 and depth[2] < 0) or\
             (x1 < 1 and x2 < 1 and x3 < 1) or (VW < x1 and VW < x2 and VW < x3) or\
             (y1 < 1 and y2 < 1 and y3 < 1) or (VH < y1 and VH < y2 and VH < y3):
                 return
@@ -483,7 +480,7 @@ class Triangle(AbstractObject):
         elif 0 <= shading:
             char = f"\x1b[38;5;{int(255.5 - 23 * sqrt(shading**3))}m{char}\x1b[0m"
 
-        c = max(z)
+        z = max(depth)
 
         dx12 = x1 - x2
         dx23 = x2 - x3
@@ -517,7 +514,7 @@ class Triangle(AbstractObject):
 
             for x in range(minx, maxx):
                 if 0 <= cx1 and 0 <= cx2 and 0 <= cx3:
-                    write(x, y, c, char)
+                    write(x, y, z, char)
 
                 cx1 = cx1 - dy12
                 cx2 = cx2 - dy23
@@ -550,43 +547,43 @@ class Mesh(AbstractObject):
 
 
     @lru_cache(CACHE_SIZE)
-    def _shade(self, tri: tuple[int, int, int]) -> float:
+    def __shade(self, tri: tuple[int, int, int]) -> float:
         i, j, k = tri
 
         points = self.points
 
-        return 0.5 + dot(normal(
-            tuple(points[i]),
-            tuple(points[j]),
-            tuple(points[k])
-        ), LIGHTNORM) / 2
+        return shade(
+            points[i],
+            points[j],
+            points[k]
+        )
 
     def project(self, camera: Camera) -> tuple[tuple[tuple[float, float], ...], tuple[float, ...], tuple[float, ...]]:
         res = []
-        clip = []
+        depth = []
 
         if self.worldloc:
             for p in self.points:
-                r, c = camera.project(p)
+                r, z = camera.project(p)
                 res.append(r)
-                clip.append(c)
+                depth.append(z)
 
         else:
             rm = self.rotmat
             pos = self.pos
 
             for p in self.points:
-                r, c = camera.project(pos + (rm @ p))
+                r, z = camera.project(pos + (rm @ p))
                 res.append(r)
-                clip.append(c)
+                depth.append(z)
 
-        shading = tuple(map(self._shade, self.triangles))
+        shading = tuple(map(self.__shade, self.triangles))
 
-        return tuple(res), tuple(clip), shading
+        return tuple(res), tuple(depth), shading
 
     def render(self,
                proj: tuple[tuple[float, float], ...],
-               z: tuple[float, ...],
+               depth: tuple[float, ...],
                shading: tuple[float, ...],
                *,
                char: str="") -> None:
@@ -594,7 +591,7 @@ class Mesh(AbstractObject):
         for i, (j, k, l) in enumerate(self.triangles):
             Triangle.render(
                 proj[j] + proj[k] + proj[l],
-                (z[j], z[k], z[l]),
+                (depth[j], depth[k], depth[l]),
                 shading[i],
                 char=char
             )
@@ -603,7 +600,7 @@ class Mesh(AbstractObject):
             for i in range(len(p) - 1):
                 Line.render(
                     proj[p[i]] + proj[p[i+1]],
-                    (z[p[i]], z[p[i+1]]),
+                    (depth[p[i]], depth[p[i+1]]),
                     char=char
                 )
 
@@ -623,14 +620,14 @@ class Piece(Mesh):
     @classmethod
     def render(cls,
                proj: tuple[tuple[float, float], ...],
-               z: tuple[float, ...],
+               depth: tuple[float, ...],
                shading: tuple[float, ...],
                *,
                char: str="") -> None:
         for i, (j, k, l) in enumerate(cls.triangles):
             Triangle.render(
                 proj[j] + proj[k] +  proj[l],
-                (z[j], z[k], z[l]),
+                (depth[j], depth[k], depth[l]),
                 shading[i],
                 char=char
             )
@@ -638,7 +635,7 @@ class Piece(Mesh):
         for i, j in cls.lines:
             Line.render(
                 proj[i] + proj[j],
-                (z[i], z[j]),
+                (depth[i], depth[j]),
                 char=char
             )
 
