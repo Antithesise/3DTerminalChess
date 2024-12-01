@@ -1,10 +1,11 @@
 from time import sleep, time
 
-from input import getch, isansitty, kbhit
+from engine import *
 from graphics import *
+from input import getch, isansitty, kbhit
 
 
-def handlein(camera: Camera) -> bool:
+def handlein(camera: Camera, dt: float) -> bool:
     redraw = False
     key = ord(getch())
 
@@ -13,13 +14,13 @@ def handlein(camera: Camera) -> bool:
 
         match key:
             case 72: # up
-                camera.rot += [-5, 0, 0]
+                camera.rot += [-100*dt, 0, 0]
             case 75: # left
-                camera.rot += [0, -5, 0]
+                camera.rot += [0, -100*dt, 0]
             case 77: # right
-                camera.rot += [0, 5, 0]
+                camera.rot += [0, 100*dt, 0]
             case 80: # down
-                camera.rot += [5, 0, 0]
+                camera.rot += [100*dt, 0, 0]
 
             # case 83: # delete
             #     pass
@@ -45,7 +46,7 @@ def handlein(camera: Camera) -> bool:
             #     pass
 
             case 9: # tab:
-                camera.pos += [0, -0.2, 0]
+                camera.pos += [0, -4*dt, 0]
 
             # case 10 | 13: # newline / carriage return
             #     pass
@@ -78,31 +79,40 @@ def handlein(camera: Camera) -> bool:
             #     pass
 
             case 32: # space
-                camera.pos += [0, 0.2, 0]
+                camera.pos += [0, 4*dt, 0]
             case 97: # a
-                camera.pos += [-0.2, 0, 0] @ camera.yrotmat
+                camera.pos += [-4*dt, 0, 0] @ camera.yrotmat
             case 100: # d
-                camera.pos += [0.2, 0, 0]  @ camera.yrotmat
+                camera.pos += [4*dt, 0, 0]  @ camera.yrotmat
             case 101: # e
-                camera.pos += [0.14, 0, 0.14] @ camera.yrotmat
+                camera.pos += [2.8*dt, 0, 2.8*dt] @ camera.yrotmat
             case 113: # q
-                camera.pos += [-0.14, 0, 0.14] @ camera.yrotmat
+                camera.pos += [-2.8*dt, 0, 2.8*dt] @ camera.yrotmat
             case 115: # s
-                camera.pos += [0, 0, -0.2] @ camera.yrotmat
+                camera.pos += [0, 0, -4*dt] @ camera.yrotmat
             case 119: # w
-                camera.pos += [0, 0, 0.2] @ camera.yrotmat
+                camera.pos += [0, 0, 4*dt] @ camera.yrotmat
+            case 120: # x
+                camera.pos = array((0, 6, -7), float64)
+                camera.rot = array((40, 0, 0), float64)
 
             # case _:
             #     pass
 
-        if key in [9, 32, 97, 100, 101, 113, 115, 119]:
+        if key in [9, 32, 97, 100, 101, 113, 115, 119, 120]:
             redraw = True
 
     return redraw
 
 
 def main() -> None:
+    board = Board.fromFEN(STARTFEN)
     camera = Camera((0, 6, -7), (40, 0, 0))
+
+    cbpoints = tuple((x, -1, z) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
+    cbtris   = tuple((i, i + 10, i + 9) for i in range(0, 70, 2) if i % 18 < 16) +\
+               tuple((i, i + 1, i + 10) for i in range(0, 70, 2) if i % 18 < 16)
+    cb       = Mesh(cbpoints, cbtris, (), fill=".", worldloc=True)
 
     # xgrid = [(Line((x, -1, -4), (x, -1, 4)), {"overdraw": True}) for x in range(-3, 4)]
     # zgrid = [(Line((-4, -1, z), (4, -1, z)), {"overdraw": True}) for z in range(-3, 4)]
@@ -114,58 +124,12 @@ def main() -> None:
     # ]
     # border = [(Line(bpoints[i], bpoints[(i+1) % 4]), {"overdraw": True}) for i in range(4)]
 
-    cbpoints = tuple((x, -1, z) for z in range(-4, 5) for x in range(-4, 5) if -8 != x + z != 8)
-    cbtris = tuple((i, i + 10, i + 9) for i in range(0, 70, 2) if i % 18 < 16) +\
-             tuple((i, i + 1, i + 10) for i in range(0, 70, 2) if i % 18 < 16)
-
-    cb = Mesh(cbpoints, cbtris, ())
-
-    WKing = King((0.5, 0, -3.5))
-    WQueen = Queen((-0.5, 0, -3.5))
-    WKRook = Rook((3.5, 0, -3.5))
-    WQRook = Rook((-3.5, 0, -3.5))
-    WKBishop = Bishop((1.5, 0, -3.5))
-    WQBishop = Bishop((-1.5, 0, -3.5))
-    WKKnight = Knight((2.5, 0, -3.5))
-    WQKnight = Knight((-2.5, 0, -3.5))
-    WPawns = [(Pawn((x - 3.5, 0, -2.5)), {"char": "#"}) for x in range(8)]
-
-    BKing = King((0.5, 0, 3.5), (0, 180, 0))
-    BQueen = Queen((-0.5, 0, 3.5), (0, 180, 0))
-    BKRook = Rook((3.5, 0, 3.5), (0, 180, 0))
-    BQRook = Rook((-3.5, 0, 3.5), (0, 180, 0))
-    BKBishop = Bishop((1.5, 0, 3.5), (0, 180, 0))
-    BQBishop = Bishop((-1.5, 0, 3.5), (0, 180, 0))
-    BKKnight = Knight((2.5, 0, 3.5), (0, 180, 0))
-    BQKnight = Knight((-2.5, 0, 3.5), (0, 180, 0))
-    BPawns = [(Pawn((x - 3.5, 0, 2.5), (0, 180, 0)), {"char": ":"}) for x in range(8)]
-
     objects = [
-        (cb, {"char": "."}),
+        cb,
         # *xgrid,
         # *zgrid,
         # *border,
-        (WKing, {"char": "#"}),
-        (WQueen, {"char": "#"}),
-        (WKRook, {"char": "#"}),
-        (WQRook, {"char": "#"}),
-        (WKBishop, {"char": "#"}),
-        (WQBishop, {"char": "#"}),
-        (WKKnight, {"char": "#"}),
-        (WQKnight, {"char": "#"}),
-        *WPawns,
-        (BKing, {"char": ":"}),
-        (BQueen, {"char": ":"}),
-        (BKRook, {"char": ":"}),
-        (BQRook, {"char": ":"}),
-        (BKBishop, {"char": ":"}),
-        (BQBishop, {"char": ":"}),
-        (BKKnight, {"char": ":"}),
-        (BQKnight, {"char": ":"}),
-        *BPawns,
     ]
-
-    NOBJS = len(objects)
 
     redraw = True
     t = time()
@@ -178,7 +142,7 @@ def main() -> None:
             redraw = False
 
             t = time()
-            res = render(objects, camera)
+            res = render(objects + board.pieces, camera)
             dt = time() - t or FMIN
 
             if DEBUG:
@@ -187,8 +151,7 @@ def main() -> None:
                 n += 1
 
                 res += (
-                    f"\n\nBody Count: {NOBJS:3d}"
-                    f"\nDelta Time: {dt*1000:3.0f} ms"
+                    f"\n\nDelta Time: {dt*1000:3.0f} ms"
                     f"\nExtrap FPS: {fps:6.2f}"
                     f"\n  Mean FPS: {tt/n:6.2f}"
                 )
@@ -198,7 +161,7 @@ def main() -> None:
         while not kbhit():
             sleep(0.0001)
 
-        redraw = handlein(camera)
+        redraw = handlein(camera, dt + 0.02) # account for render/input time etc.
 
 
 if __name__ == "__main__":
