@@ -115,10 +115,13 @@ def auto_play(board: Board) -> None:
     while True:
         sleep(1)
 
-        move = choices(board.gen_moves())[0]
+        moves = board.gen_moves()
+
+        if not moves:
+            break # checkmate/stalemate
 
         with lock:
-            board.make_move(move)
+            board.make_move(choices(moves)[0])
             board.redraw = True
 
 def main() -> None:

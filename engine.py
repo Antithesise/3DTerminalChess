@@ -16,11 +16,9 @@ POSITIONS = {chr(x+97) + str(z+1):(z*8) + x for x in range(8) for z in range(8)}
 ALPHNUM =   {(x,z):chr(x+96) + str(z) for x in range(1, 9) for z in range(1, 9)}
 ALPHNUM2 =  {(x + z*8):chr(x+97) + str(z+1) for x in range(8) for z in range(8)}
 
-KDIRS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-QDIRS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-RDIRS = [(-1, 0), (0, -1), (0, 1), (1, 0)]
-BDIRS = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-NDIRS = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+ORTHOGS = [(-1, 0), (0, -1), (0, 1), (1, 0)]
+DIAGS = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+KNIGHTDIRS = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
 
 
 class Pieces(Enum):
@@ -255,7 +253,7 @@ class Board:
     def get(self, rank: int, file: int, /) -> tuple[Square, Pieces]: ...
 
     def get(self, rank: int, file: int=-1, /) -> tuple[Square, Pieces]:
-        if rank == -1:
+        if file == -1:
             sqr = rank
             rank, file = divmod(sqr, 8)
         else:
@@ -266,19 +264,20 @@ class Board:
         else:
             return Square.INVALID, Pieces.NONE
 
+    # TODO: Caching
     def isattacked(self, sqr: int, side: Side) -> bool:
         "does opposite of side control this square?"
 
         rank, file = divmod(sqr, 8)
 
-        for dr, df in KDIRS:
+        for dr, df in ORTHOGS + DIAGS:
             r, f = rank - dr, file - df
             state, piece = self.get(r, f)
 
             if state == ~side and piece == Pieces.KING:
                 return True
 
-        for dr, df in RDIRS:
+        for dr, df in ORTHOGS:
             r, f = rank, file
             for d in range(7):
                 r -= dr
@@ -294,7 +293,7 @@ class Board:
                 elif state == ~side and (piece == Pieces.ROOK or piece == Pieces.QUEEN):
                     return True
 
-        for dr, df in BDIRS:
+        for dr, df in DIAGS:
             r, f = rank, file
             for d in range(7):
                 r -= dr
@@ -310,7 +309,7 @@ class Board:
                 elif state == ~side and (piece == Pieces.BISHOP or piece == Pieces.QUEEN):
                     return True
 
-        for dr, df in NDIRS:
+        for dr, df in KNIGHTDIRS:
             r, f = rank - dr, file - df
             state, piece = self.get(r, f)
 
@@ -323,6 +322,78 @@ class Board:
 
             if state == ~side and piece == Pieces.PAWN:
                 return True
+
+        return False
+
+    # TODO: Caching``
+    def isattackedafter(self, sqr: int, move: Move) -> bool:
+        side = move.turn
+        ro, fo = divmod(move.target, 8)
+        rt, ft = divmod(move.target, 8)
+        rank, file = divmod(sqr, 8)
+
+        for dr, df in ORTHOGS + DIAGS:
+            r, f = rank - dr, file - df
+            state, piece = self.get(r, f)
+
+            if state == ~side and piece == Pieces.KING:
+                return True
+
+        for dr, df in ORTHOGS:
+            r, f = rank, file
+            for d in range(7):
+                r -= dr
+                f -= df
+
+                if not (-1 < r < 8 and -1 < f < 8):
+                    break
+
+                state, piece = self.get(r, f)
+
+                if r == ro and f == fo: # move has unblocked rank/file
+                    continue
+                elif state == side or (r == rt and f == ft): # move has blocked rank/file
+                    break
+                elif state == ~side and (piece == Pieces.ROOK or piece == Pieces.QUEEN):
+                    return True
+
+        for dr, df in DIAGS:
+            r, f = rank, file
+            for d in range(7):
+                r -= dr
+                f -= df
+
+                if not (-1 < r < 8 and -1 < f < 8):
+                    break
+
+                state, piece = self.get(r, f)
+
+                if r == ro and f == fo: # move has unblocked diagonal
+                    continue
+                elif state == side or (r == rt and f == ft): # move has blocked diagonal
+                    break
+                elif ~side and (piece == Pieces.BISHOP or piece == Pieces.QUEEN):
+                    return True
+
+        for dr, df in KNIGHTDIRS:
+            r, f = rank - dr, file - df
+            state, piece = self.get(r, f)
+
+            if r == rt and f == ft: # move may have captured knight
+                continue
+            elif state == ~side and piece == Pieces.KNIGHT:
+                return True
+
+        for dr, df in ([(1, -1), (1, 1)] if side else [(-1, -1), (-1, 1)]):
+            r, f = rank - dr, file - df
+            state, piece = self.get(r, f)
+
+            if r == rt and f == ft: # move may have captured knight
+                continue
+            elif state == ~side and piece == Pieces.PAWN:
+                return True
+
+        # TODO: en passant shenanigans
 
         return False
 
@@ -340,19 +411,17 @@ class Board:
             return False
         else:
             kingsqr = self.board.index(Pieces.KING)
-            if self.squares[kingsqr] != turn:
+            if self.squares[kingsqr] != turn: # wrong king has been picked
                 kingsqr = self.board.index(Pieces.KING, kingsqr + 2) # kings can't be adjacent
 
-
-        if self.isattacked(kingsqr, turn):
-            if MoveFlags.CASTLE in flags: # can't castle out of check
-                return False
-
-            # TODO: Check if move takes king out of check
-            #      (and that it doesn't reveal new checks)
+        if self.isattackedafter(kingsqr, move):
+            return False
 
         elif MoveFlags.CASTLE in flags:
-            if flags == MoveFlags.KCASTLE:
+            if self.isattacked(kingsqr, turn): # can't castle out of check
+                return False
+
+            elif flags == MoveFlags.KCASTLE:
                 if turn:
                     if CastleRights.K not in self.castling:
                         return False
@@ -383,16 +452,13 @@ class Board:
                     elif self.isattacked(58, turn) or self.isattacked(59, turn):
                         return False
 
-        else:
-            ... # TODO: check for revealed checks due to move
-
         return True
 
     def _gen_king(self, sqr: int, turn: Side) -> list[Move]:
         rank, file = divmod(sqr, 8)
         moves = []
 
-        for dr, df in KDIRS:
+        for dr, df in ORTHOGS + DIAGS:
             if df or dr: # must move
                 r, f = rank + dr, file + df
 
@@ -425,7 +491,7 @@ class Board:
         rank, file = divmod(sqr, 8)
         moves = []
 
-        for dr, df in QDIRS:
+        for dr, df in ORTHOGS + DIAGS:
             r, f = rank, file
 
             for d in range(7):
@@ -453,7 +519,7 @@ class Board:
         rank, file = divmod(sqr, 8)
         moves = []
 
-        for dr, df in RDIRS:
+        for dr, df in ORTHOGS:
             r, f = rank, file
 
             for d in range(7):
@@ -481,7 +547,7 @@ class Board:
         rank, file = divmod(sqr, 8)
         moves = []
 
-        for dr, df in BDIRS:
+        for dr, df in DIAGS:
             r, f = rank, file
 
             for d in range(7):
@@ -509,7 +575,7 @@ class Board:
         rank, file = divmod(sqr, 8)
         moves = []
 
-        for dr, df in NDIRS:
+        for dr, df in KNIGHTDIRS:
             r, f = rank + dr, file + df
 
             if not (-1 < r < 8 and -1 < f < 8):
