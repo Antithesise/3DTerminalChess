@@ -1,8 +1,7 @@
-from sys import stdin, stdout
-from platform import system
+from sys import platform, stdin, stdout
 
 
-if system() == "Windows":
+if platform == "win32":
     from msvcrt import getch, kbhit # type: ignore
 
 else:

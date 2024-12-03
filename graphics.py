@@ -5,7 +5,7 @@ from functools import lru_cache
 from math import copysign, cos, hypot, radians, sin, sqrt
 from os import get_terminal_size
 from sys import float_info
-from typing import Never, NoReturn, Self
+from typing import Any, Never, NoReturn, Self
 from numpy import array, cross, dot, empty, float64
 from numpy.linalg import det
 from numpy.typing import ArrayLike, NDArray
@@ -519,12 +519,6 @@ class Triangle(AbstractObject):
                 if c:
                     z = area / (w1 * z1 + w2 * z2 + w3 * z3)
 
-                    # r = int(w1 / area * 255)
-                    # g = int(w2 / area * 255)
-                    # b = int(w3 / area * 255)
-
-                    # fill = f"\x1b[48;2;{r};{g};{b}m \x1b[0m"
-
                     write(x, y, z, fill)
 
                 w1 += dy32
@@ -622,8 +616,8 @@ class Piece(Mesh):
     worldloc = False
 
     def __init__(self,
-                 pos: Vec3,
-                 side: bool) -> None:
+                 pos: Vec3=(0,0,0),
+                 side: Any=True) -> None:
 
         self.side = side
         self.fill = "#" if self.side else ":"
@@ -681,6 +675,9 @@ class Piece(Mesh):
                 (depth[i], depth[j]),
                 fill=fill
             )
+
+    def torankfile(self, rank: int, file: int) -> None:
+        self.pos = array((file - 3.5, 0, rank - 3.5), float64)
 
     @classmethod
     @abstractmethod
@@ -1107,6 +1104,9 @@ class Pawn(Piece):
         cls.points = tuple(points)
         cls.triangles = tuple(triangles)
         cls.lines = lines
+
+
+PieceType = King | Queen | Rook | Bishop | Knight | Pawn
 
 
 def render(objs: Collection[AbstractObject], camera: Camera) -> str:

@@ -1,8 +1,14 @@
+from random import choices
+from threading import RLock, Thread
 from time import sleep, time
 
+from config import *
 from engine import *
 from graphics import *
 from input import getch, isansitty, kbhit
+
+
+lock = RLock()
 
 
 def handlein(camera: Camera, dt: float) -> bool:
@@ -105,6 +111,16 @@ def handlein(camera: Camera, dt: float) -> bool:
     return redraw
 
 
+def auto_play(board: Board) -> None:
+    while True:
+        sleep(1)
+
+        move = choices(board.gen_moves())[0]
+
+        with lock:
+            board.make_move(move)
+            board.redraw = True
+
 def main() -> None:
     board = Board.fromFEN(STARTFEN)
     camera = Camera((0, 6, -7), (40, 0, 0))
@@ -131,19 +147,22 @@ def main() -> None:
         # *border,
     ]
 
-    redraw = True
     t = time()
 
     tt = 0
     n = 0
 
-    while True:
-        if redraw:
-            redraw = False
+    if DEBUG:
+        Thread(target=auto_play, args=(board,), daemon=True).start()
 
-            t = time()
-            res = render(objects + board.pieces, camera)
-            dt = time() - t or FMIN
+    while True:
+        if board.redraw:
+            with lock:
+                board.redraw = False
+
+                t = time()
+                res = render(objects + board.pieces, camera)
+                dt = time() - t or FMIN
 
             if DEBUG:
                 fps = 1/dt
@@ -158,10 +177,11 @@ def main() -> None:
 
             print(end=res, flush=True)
 
-        while not kbhit():
+        while not (kbhit() or board.redraw):
             sleep(0.0001)
 
-        redraw = handlein(camera, dt + 0.02) # account for render/input time etc.
+        if kbhit():
+            board.redraw = handlein(camera, dt + 0.02) # account for render/input time etc.
 
 
 if __name__ == "__main__":
