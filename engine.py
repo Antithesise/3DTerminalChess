@@ -80,6 +80,9 @@ class CastleRights(Flag):
     k = 4
     q = 8
 
+    WHITE = K | Q
+    BLACK = k | q
+
 CASTLEALL = CastleRights(15)
 
 class MoveFlags(IntFlag):
@@ -264,7 +267,6 @@ class Board:
         else:
             return Square.INVALID, Pieces.NONE
 
-    # TODO: Caching
     def isattacked(self, sqr: int, side: Side) -> bool:
         "does opposite of side control this square?"
 
@@ -325,7 +327,6 @@ class Board:
 
         return False
 
-    # TODO: Caching``
     def isattackedafter(self, sqr: int, move: Move) -> bool:
         side = move.turn
         ro, fo = divmod(move.target, 8)
@@ -350,7 +351,7 @@ class Board:
 
                 state, piece = self.get(r, f)
 
-                if r == ro and f == fo: # move has unblocked rank/file
+                if (r == ro and f == fo) or (r + 1 - 2 * side) * 8 + f == self.epsq: # move has unblocked rank/file
                     continue
                 elif state == side or (r == rt and f == ft): # move has blocked rank/file
                     break
@@ -368,7 +369,7 @@ class Board:
 
                 state, piece = self.get(r, f)
 
-                if r == ro and f == fo: # move has unblocked diagonal
+                if (r == ro and f == fo) or (r + 1 - 2 * side) * 8 + f == self.epsq: # move has unblocked diagonal
                     continue
                 elif state == side or (r == rt and f == ft): # move has blocked diagonal
                     break
@@ -393,8 +394,6 @@ class Board:
             elif state == ~side and piece == Pieces.PAWN:
                 return True
 
-        # TODO: en passant shenanigans
-
         return False
 
     def verify(self, move: Move) -> bool:
@@ -414,10 +413,10 @@ class Board:
             if self.squares[kingsqr] != turn: # wrong king has been picked
                 kingsqr = self.board.index(Pieces.KING, kingsqr + 2) # kings can't be adjacent
 
-        if self.isattackedafter(kingsqr, move):
+        if self.isattackedafter(kingsqr, move): # can't stay in check
             return False
 
-        elif MoveFlags.CASTLE in flags:
+        elif flags & 0b1110 == MoveFlags.CASTLE:
             if self.isattacked(kingsqr, turn): # can't castle out of check
                 return False
 
@@ -752,6 +751,22 @@ class Board:
                 self.pieces[oindex] = Knight(side=turn)
                 del obj
 
+        elif self.board[origin] == Pieces.KING:
+            if turn:
+                self.castling &= ~CastleRights.WHITE
+            else:
+                self.castling &= ~CastleRights.BLACK
+
+        elif self.board[origin] == Pieces.ROOK or self.board[target] == Pieces.ROOK:
+            if origin == 0 or target == 0:
+                self.castling &= ~CastleRights.Q
+            elif origin == 7 or target == 7:
+                self.castling &= ~CastleRights.K
+            elif origin == 56 or target == 56:
+                    self.castling &= ~CastleRights.q
+            elif origin == 63 or target == 63:
+                    self.castling &= ~CastleRights.k
+
         self.board[origin] = Pieces.NONE
         self.squares[origin] = Square.EMPTY
 
@@ -788,7 +803,7 @@ class Board:
                 if self.objmap[i] > tindex:
                     self.objmap[i] -= 1
 
-        elif MoveFlags.CASTLE in flags:
+        elif flags & 0b1110 == MoveFlags.CASTLE:
             if turn:
                 if flags == MoveFlags.KCASTLE:
                     self.castling &= ~CastleRights.K
