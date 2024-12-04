@@ -335,7 +335,7 @@ class Board:
 
         for dr, df in ORTHOGS + DIAGS:
             r, f = rank - dr, file - df
-            state, piece = self.get(r, f)
+            state, piece = self.get(r, f) # will prevent overflow
 
             if state == ~side and piece == Pieces.KING:
                 return True
@@ -389,7 +389,7 @@ class Board:
             r, f = rank - dr, file - df
             state, piece = self.get(r, f)
 
-            if r == rt and f == ft: # move may have captured knight
+            if (r == rt and f == ft) or (r == ro and f == fo):
                 continue
             elif state == ~side and piece == Pieces.PAWN:
                 return True
@@ -710,10 +710,6 @@ class Board:
         target = move.target
         origin = move.origin
         flags = move.flags
-        epsq = -1
-
-        if flags == MoveFlags.DBLPAWN:
-            epsq = target - 16 * turn + 8
 
         oindex = self.objmap[origin]
         assert oindex != -1, move
@@ -836,6 +832,11 @@ class Board:
 
             self.objmap[rt] = self.objmap[ro]
             self.objmap[ro] = -1
+
+        if flags == MoveFlags.DBLPAWN:
+            epsq = target - 16 * turn + 8
+        else:
+            epsq = -1
 
         self.objmap[target] = self.objmap[origin]
         self.objmap[origin] = -1
