@@ -406,21 +406,14 @@ class Board:
         assert state == turn, move
         assert piece != Pieces.NONE, move
 
-        kingsqr = self.board.index(Pieces.KING)
-        if self.squares[kingsqr] != turn: # wrong king has been picked
-            kingsqr = self.board.index(Pieces.KING, kingsqr + 1)
-
         if piece == Pieces.KING:
-            if self.isattacked(target, turn): # can't move into check
+            if self.isattacked(origin, turn) or self.isattacked(target, turn): # can't move into check
                 return False
 
             elif flags & 0b1110 == MoveFlags.CASTLE:
-                if self.isattacked(kingsqr, turn) or self.isattacked(target, turn):
-                    return False # can't castle into or out of check
-
                 # TODO: We should probably check if rooks are in the right place
 
-                elif flags == MoveFlags.KCASTLE:
+                if flags == MoveFlags.KCASTLE:
                     if turn:
                         if CastleRights.K not in self.castling:
                             return False
@@ -451,8 +444,13 @@ class Board:
                         elif self.isattacked(59, turn): # can't castle through check
                             return False
 
-        elif self.isattackedafter(kingsqr, move): # can't stay in check
-            return False
+        else:
+            kingsqr = self.board.index(Pieces.KING)
+            if self.squares[kingsqr] != turn: # wrong king has been picked
+                kingsqr = self.board.index(Pieces.KING, kingsqr + 1)
+
+            if self.isattackedafter(kingsqr, move): # can't stay in check
+                return False
 
         return True
 
