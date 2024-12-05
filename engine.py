@@ -329,7 +329,7 @@ class Board:
 
     def isattackedafter(self, sqr: int, move: Move) -> bool:
         side = move.turn
-        ro, fo = divmod(move.target, 8)
+        ro, fo = divmod(move.origin, 8)
         rt, ft = divmod(move.target, 8)
         rank, file = divmod(sqr, 8)
 
@@ -406,50 +406,53 @@ class Board:
         assert state == turn, move
         assert piece != Pieces.NONE, move
 
-        if piece == Pieces.KING and self.isattacked(target, turn): # can't move into check
-            return False
-        else:
-            kingsqr = self.board.index(Pieces.KING)
-            if self.squares[kingsqr] != turn: # wrong king has been picked
-                kingsqr = self.board.index(Pieces.KING, kingsqr + 2) # kings can't be adjacent
+        kingsqr = self.board.index(Pieces.KING)
+        if self.squares[kingsqr] != turn: # wrong king has been picked
+            kingsqr = self.board.index(Pieces.KING, kingsqr + 1)
 
-        if self.isattackedafter(kingsqr, move): # can't stay in check
-            return False
-
-        elif flags & 0b1110 == MoveFlags.CASTLE:
-            if self.isattacked(kingsqr, turn): # can't castle out of check
+        if piece == Pieces.KING:
+            if self.isattacked(target, turn): # can't move into check
                 return False
 
-            elif flags == MoveFlags.KCASTLE:
-                if turn:
-                    if CastleRights.K not in self.castling:
-                        return False
-                    elif not self.squares[5] == self.squares[6] == Square.EMPTY:
-                        return False
-                    elif self.isattacked(5, turn) or self.isattacked(6, turn):
-                        return False
+            elif flags & 0b1110 == MoveFlags.CASTLE:
+                if self.isattacked(kingsqr, turn) or self.isattacked(target, turn):
+                    return False # can't castle into or out of check
+
+                # TODO: We should probably check if rooks are in the right place
+
+                elif flags == MoveFlags.KCASTLE:
+                    if turn:
+                        if CastleRights.K not in self.castling:
+                            return False
+                        elif not self.squares[5] == self.squares[6] == Square.EMPTY:
+                            return False
+                        elif self.isattacked(5, turn): # can't castle through check
+                            return False
+                    else:
+                        if CastleRights.k not in self.castling:
+                            return False
+                        elif not self.squares[61] == self.squares[62] == Square.EMPTY:
+                            return False
+                        elif self.isattacked(61, turn): # can't castle through check
+                            return False
                 else:
-                    if CastleRights.k not in self.castling:
-                        return False
-                    elif not self.squares[61] == self.squares[62] == Square.EMPTY:
-                        return False
-                    elif self.isattacked(61, turn) or self.isattacked(62, turn):
-                        return False
-            else:
-                if turn:
-                    if CastleRights.Q not in self.castling:
-                        return False
-                    elif not self.squares[1] == self.squares[2] == self.squares[3] == Square.EMPTY:
-                        return False
-                    elif self.isattacked(2, turn) or self.isattacked(3, turn):
-                        return False
-                else:
-                    if CastleRights.q not in self.castling:
-                        return False
-                    elif not self.squares[57] == self.squares[58] == self.squares[59] == Square.EMPTY:
-                        return False
-                    elif self.isattacked(58, turn) or self.isattacked(59, turn):
-                        return False
+                    if turn:
+                        if CastleRights.Q not in self.castling:
+                            return False
+                        elif not self.squares[1] == self.squares[2] == self.squares[3] == Square.EMPTY:
+                            return False
+                        elif self.isattacked(3, turn): # can't castle through check
+                            return False
+                    else:
+                        if CastleRights.q not in self.castling:
+                            return False
+                        elif not self.squares[57] == self.squares[58] == self.squares[59] == Square.EMPTY:
+                            return False
+                        elif self.isattacked(59, turn): # can't castle through check
+                            return False
+
+        elif self.isattackedafter(kingsqr, move): # can't stay in check
+            return False
 
         return True
 
