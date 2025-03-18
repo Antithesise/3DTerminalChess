@@ -44,7 +44,7 @@ class Pieces(Enum):
             Knight: Pieces.KNIGHT,
             Pawn: Pieces.PAWN,
 
-        }[p.__class__]
+        }[p.__class__] # type: ignore
 
     @classmethod
     def fromlabel(cls, p: str) -> "Pieces":
